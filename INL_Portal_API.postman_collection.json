@@ -1,0 +1,565 @@
+{
+  "info": {
+    "name": "INL Portal API",
+    "description": "REST API for INL Portal — Fastify + TypeScript + Drizzle ORM",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "refresh_token", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/health" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.success && res.data.accessToken) {",
+                  "  pm.collectionVariables.set('token', res.data.accessToken);",
+                  "  pm.collectionVariables.set('refresh_token', res.data.refreshToken);",
+                  "  console.log('Access token and Refresh token saved');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@inl.co.id\",\n  \"password\": \"Admin@123\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login" }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.success && res.data.accessToken) {",
+                  "  pm.collectionVariables.set('token', res.data.accessToken);",
+                  "  pm.collectionVariables.set('refresh_token', res.data.refreshToken);",
+                  "  console.log('Tokens refreshed and saved');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/auth/refresh" }
+          }
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/me" }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/logout" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/users?page=1&limit=50",
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "50" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "role", "value": "user", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@inl.co.id\",\n  \"password\": \"Password1\",\n  \"role\": \"user\",\n  \"isActive\": true,\n  \"employeeId\": null\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/users" }
+          }
+        },
+        {
+          "name": "Get User By ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/users/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"super_admin\",\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/users/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/users/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Get User Apps",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/users/:id/apps", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Grant App Access",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"appId\": \"uuid-app-disini\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/users/:id/grant-app", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Revoke App Access",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/users/:id/revoke-app/:appId",
+              "variable": [
+                { "key": "id", "value": "uuid-user" },
+                { "key": "appId", "value": "uuid-app" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Employees",
+      "item": [
+        {
+          "name": "List Employees",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/employees?page=1&limit=50",
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "50" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "bagianId", "value": "", "disabled": true },
+                { "key": "isActive", "value": "true", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Employee",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nrk\": \"NRK001\",\n  \"nik\": \"3201010101900001\",\n  \"nama\": \"Budi Santoso\",\n  \"jenisKelamin\": \"L\",\n  \"jabatan\": \"Staff IT\",\n  \"grade\": \"4A\",\n  \"bagianId\": null,\n  \"subBagianId\": null,\n  \"atasanId\": null,\n  \"tanggalMasuk\": \"2020-01-01\",\n  \"tempatLahir\": \"Jakarta\",\n  \"tanggalLahir\": \"1990-01-01\",\n  \"statusKaryawanId\": null,\n  \"pendidikanTerakhirId\": null,\n  \"statusPernikahanId\": null,\n  \"nomorHp\": \"081234567890\",\n  \"alamat\": \"Jl. Contoh No. 1, Jakarta\",\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/employees" }
+          }
+        },
+        {
+          "name": "Get Employee By ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/employees/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Update Employee",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jabatan\": \"Senior Staff IT\",\n  \"grade\": \"5A\",\n  \"nomorHp\": \"089876543210\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/employees/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Delete Employee",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/employees/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Upload Foto Profil",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "src": "/path/to/photo.jpg", "description": "File foto (JPEG/PNG/WEBP, max 5MB)" }
+              ]
+            },
+            "url": { "raw": "{{base_url}}/api/employees/:id/photo", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Organisasi",
+      "item": [
+        {
+          "name": "Bagian",
+          "item": [
+            {
+              "name": "List Bagian",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": {
+                  "raw": "{{base_url}}/api/org/bagian?page=1&limit=50",
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "50" },
+                    { "key": "search", "value": "", "disabled": true },
+                    { "key": "isActive", "value": "true", "disabled": true }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Bagian",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nama\": \"Teknologi Informasi\",\n  \"kode\": \"TI\",\n  \"isActive\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/org/bagian" }
+              }
+            },
+            {
+              "name": "Get Bagian By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/api/org/bagian/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+              }
+            },
+            {
+              "name": "Update Bagian",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nama\": \"Departemen IT\",\n  \"isActive\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/org/bagian/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+              }
+            },
+            {
+              "name": "Delete Bagian",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/api/org/bagian/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Sub Bagian",
+          "item": [
+            {
+              "name": "List Sub Bagian",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": {
+                  "raw": "{{base_url}}/api/org/sub-bagian?page=1&limit=50",
+                  "query": [
+                    { "key": "page", "value": "1" },
+                    { "key": "limit", "value": "50" },
+                    { "key": "bagianId", "value": "", "disabled": true },
+                    { "key": "search", "value": "", "disabled": true }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "Create Sub Bagian",
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nama\": \"Pengembangan Aplikasi\",\n  \"kode\": \"TI-APP\",\n  \"bagianId\": \"uuid-bagian-disini\",\n  \"isActive\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/org/sub-bagian" }
+              }
+            },
+            {
+              "name": "Get Sub Bagian By ID",
+              "request": {
+                "method": "GET",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/api/org/sub-bagian/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+              }
+            },
+            {
+              "name": "Update Sub Bagian",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Authorization", "value": "Bearer {{token}}" },
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"nama\": \"Dev & QA\",\n  \"isActive\": true\n}"
+                },
+                "url": { "raw": "{{base_url}}/api/org/sub-bagian/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+              }
+            },
+            {
+              "name": "Delete Sub Bagian",
+              "request": {
+                "method": "DELETE",
+                "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+                "url": { "raw": "{{base_url}}/api/org/sub-bagian/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Aplikasi",
+      "item": [
+        {
+          "name": "List Aplikasi",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/apps?page=1&limit=50",
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "50" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "authMode", "value": "sso", "disabled": true },
+                { "key": "isActive", "value": "true", "disabled": true }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Aplikasi",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nama\": \"Sistem Absensi\",\n  \"url\": \"https://absensi.inl.co.id\",\n  \"authMode\": \"sso\",\n  \"icon\": \"clock\",\n  \"deskripsi\": \"Sistem pencatatan kehadiran karyawan\",\n  \"urutan\": 1,\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/apps" }
+          }
+        },
+        {
+          "name": "Get Aplikasi By ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/apps/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Update Aplikasi",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nama\": \"Sistem Absensi v2\",\n  \"urutan\": 2,\n  \"isActive\": true\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/apps/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        },
+        {
+          "name": "Delete Aplikasi",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/apps/:id", "variable": [{ "key": "id", "value": "uuid-disini" }] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SSO",
+      "item": [
+        {
+          "name": "Generate SSO Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.success && res.data.token) {",
+                  "  pm.collectionVariables.set('sso_token', res.data.token);",
+                  "  console.log('SSO Token saved');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{base_url}}/api/sso/token?app_id=uuid-app-disini",
+              "query": [{ "key": "app_id", "value": "uuid-app-disini" }]
+            }
+          }
+        },
+        {
+          "name": "Verify SSO Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{sso_token}}\",\n  \"app_id\": \"uuid-app-disini\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/api/sso/verify" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Master Data",
+      "item": [
+        {
+          "name": "Status Karyawan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/master/status-karyawan" }
+          }
+        },
+        {
+          "name": "Pendidikan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/master/pendidikan" }
+          }
+        },
+        {
+          "name": "Status Pernikahan",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/api/master/status-pernikahan" }
+          }
+        }
+      ]
+    }
+  ]
+}

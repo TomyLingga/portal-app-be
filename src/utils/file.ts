@@ -1,0 +1,79 @@
+// ─── Utils: File Upload ───────────────────────────────────────────────────────
+import fs       from 'fs'
+import path     from 'path'
+import { pipeline } from 'stream/promises'
+import { MultipartFile } from '@fastify/multipart'
+import { config } from '../config/env'
+
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const MAX_SIZE_MB  = 5
+
+/**
+ * Simpan file upload ke disk.
+ * Nama file di-rename ke: {timestamp}_{random}_{ext}
+ * Kembalikan nama file saja (bukan full path).
+ */
+export async function saveUploadedFile(file: MultipartFile): Promise<string> {
+  if (!ALLOWED_MIME.includes(file.mimetype)) {
+    throw new Error(`Tipe file tidak didukung. Hanya: ${ALLOWED_MIME.join(', ')}`)
+  }
+
+  const uploadDir = path.resolve(config.upload.dir)
+
+  // Buat folder uploads jika belum ada
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true })
+  }
+
+  // Ambil ekstensi dari mimetype (lebih aman dari filename)
+  const extMap: Record<string, string> = {
+    'image/jpeg': '.jpg',
+    'image/png':  '.png',
+    'image/webp': '.webp',
+    'image/gif':  '.gif',
+  }
+  const ext      = extMap[file.mimetype] ?? '.bin'
+  const rand     = Math.random().toString(36).slice(2, 8)
+  const filename = `${Date.now()}_${rand}${ext}`
+  const filepath = path.join(uploadDir, filename)
+
+  // Cek ukuran file via stream (track bytes)
+  let bytes = 0
+  const maxBytes = MAX_SIZE_MB * 1024 * 1024
+
+  await pipeline(
+    file.file,
+    async function* (source) {
+      for await (const chunk of source) {
+        bytes += (chunk as Buffer).length
+        if (bytes > maxBytes) {
+          throw new Error(`Ukuran file melebihi ${MAX_SIZE_MB}MB`)
+        }
+        yield chunk
+      }
+    },
+    fs.createWriteStream(filepath),
+  )
+
+  return filename
+}
+
+/**
+ * Hapus file dari disk jika ada.
+ */
+export function deleteFile(filename: string): void {
+  if (!filename) return
+  const filepath = path.join(path.resolve(config.upload.dir), filename)
+  if (fs.existsSync(filepath)) {
+    fs.unlinkSync(filepath)
+  }
+}
+
+/**
+ * Bangun URL publik dari nama file.
+ * URL base diambil dari UPLOAD_URL di .env
+ */
+export function buildFileUrl(filename: string | null | undefined): string | null {
+  if (!filename) return null
+  return `${config.upload.url}/${filename}`
+}
