@@ -1,7 +1,7 @@
 // ─── Routes: Master Data ──────────────────────────────────────────────────────
 import { FastifyInstance }   from 'fastify'
 import { db }                from '../db'
-import { refStatusKaryawan, refPendidikan, refStatusPernikahan } from '../db/schema'
+import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade } from '../db/schema'
 import { ok }                from '../utils/response'
 
 export default async function masterRoutes(fastify: FastifyInstance) {
@@ -22,6 +22,12 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   // GET /api/master/status-pernikahan
   fastify.get('/status-pernikahan', { preHandler: authOnly }, async (_request, reply) => {
     const rows = await db.select().from(refStatusPernikahan).orderBy(refStatusPernikahan.label)
+    return reply.send(ok(rows))
+  })
+
+  // GET /api/master/grade
+  fastify.get('/grade', { preHandler: authOnly }, async (_request, reply) => {
+    const rows = await db.select().from(refGrade).orderBy(refGrade.level)
     return reply.send(ok(rows))
   })
 }

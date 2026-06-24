@@ -1,14 +1,12 @@
-// ─── Routes: Organisasi ───────────────────────────────────────────────────────
+// ─── Routes: Organisasi (Unit Organisasi) ─────────────────────────────────────
 import { FastifyInstance } from 'fastify'
-import { z }               from 'zod'
 import {
-  createBagianSchema, updateBagianSchema,
-  createSubBagianSchema, updateSubBagianSchema,
-  listQuerySchema,
+  createUnitOrganisasiSchema, updateUnitOrganisasiSchema, listUnitOrganisasiQuerySchema,
 } from '../validators/organisasi.validator'
 import {
-  listBagianService, getBagianByIdService, createBagianService, updateBagianService, deleteBagianService,
-  listSubBagianService, getSubBagianByIdService, createSubBagianService, updateSubBagianService, deleteSubBagianService,
+  listUnitOrganisasiService, getUnitOrganisasiByIdService,
+  createUnitOrganisasiService, updateUnitOrganisasiService, deleteUnitOrganisasiService,
+  getChildrenService, getTreeService,
 } from '../services/organisasi.service'
 import { ok } from '../utils/response'
 
@@ -16,63 +14,48 @@ export default async function organisasiRoutes(fastify: FastifyInstance) {
   const authOnly  = [fastify.authenticate]
   const adminOnly = [fastify.authenticate, fastify.authorize(['super_admin'])]
 
-  // ── Bagian ──────────────────────────────────────────────────────────────────
-  fastify.get('/bagian', { preHandler: authOnly }, async (request, reply) => {
-    const query  = listQuerySchema.parse(request.query)
-    const result = await listBagianService(query)
+  // GET /api/org/unit — list dengan pagination & filter
+  fastify.get('/unit', { preHandler: authOnly }, async (request, reply) => {
+    const query  = listUnitOrganisasiQuerySchema.parse(request.query)
+    const result = await listUnitOrganisasiService(query)
     return reply.send(ok(result.rows, result.meta))
   })
 
-  fastify.get('/bagian/:id', { preHandler: authOnly }, async (request, reply) => {
+  // GET /api/org/tree — full org tree (untuk org chart)
+  fastify.get('/tree', { preHandler: authOnly }, async (_request, reply) => {
+    const tree = await getTreeService()
+    return reply.send(ok(tree))
+  })
+
+  // GET /api/org/unit/:id
+  fastify.get('/unit/:id', { preHandler: authOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    return reply.send(ok(await getBagianByIdService(id)))
+    return reply.send(ok(await getUnitOrganisasiByIdService(id)))
   })
 
-  fastify.post('/bagian', { preHandler: adminOnly }, async (request, reply) => {
-    const input  = createBagianSchema.parse(request.body)
-    return reply.code(201).send(ok(await createBagianService(input)))
-  })
-
-  fastify.put('/bagian/:id', { preHandler: adminOnly }, async (request, reply) => {
+  // GET /api/org/unit/:id/children — sub-unit langsung
+  fastify.get('/unit/:id/children', { preHandler: authOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const input  = updateBagianSchema.parse(request.body)
-    return reply.send(ok(await updateBagianService(id, input)))
+    return reply.send(ok(await getChildrenService(id)))
   })
 
-  fastify.delete('/bagian/:id', { preHandler: adminOnly }, async (request, reply) => {
+  // POST /api/org/unit
+  fastify.post('/unit', { preHandler: adminOnly }, async (request, reply) => {
+    const input = createUnitOrganisasiSchema.parse(request.body)
+    return reply.code(201).send(ok(await createUnitOrganisasiService(input)))
+  })
+
+  // PUT /api/org/unit/:id
+  fastify.put('/unit/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await deleteBagianService(id)
-    return reply.code(204).send()
+    const input  = updateUnitOrganisasiSchema.parse(request.body)
+    return reply.send(ok(await updateUnitOrganisasiService(id, input)))
   })
 
-  // ── Sub Bagian ──────────────────────────────────────────────────────────────
-  const subListQuerySchema = listQuerySchema.extend({ bagianId: z.string().uuid().optional() })
-
-  fastify.get('/sub-bagian', { preHandler: authOnly }, async (request, reply) => {
-    const query  = subListQuerySchema.parse(request.query)
-    const result = await listSubBagianService(query)
-    return reply.send(ok(result.rows, result.meta))
-  })
-
-  fastify.get('/sub-bagian/:id', { preHandler: authOnly }, async (request, reply) => {
+  // DELETE /api/org/unit/:id
+  fastify.delete('/unit/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    return reply.send(ok(await getSubBagianByIdService(id)))
-  })
-
-  fastify.post('/sub-bagian', { preHandler: adminOnly }, async (request, reply) => {
-    const input  = createSubBagianSchema.parse(request.body)
-    return reply.code(201).send(ok(await createSubBagianService(input)))
-  })
-
-  fastify.put('/sub-bagian/:id', { preHandler: adminOnly }, async (request, reply) => {
-    const { id } = request.params as { id: string }
-    const input  = updateSubBagianSchema.parse(request.body)
-    return reply.send(ok(await updateSubBagianService(id, input)))
-  })
-
-  fastify.delete('/sub-bagian/:id', { preHandler: adminOnly }, async (request, reply) => {
-    const { id } = request.params as { id: string }
-    await deleteSubBagianService(id)
+    await deleteUnitOrganisasiService(id)
     return reply.code(204).send()
   })
 }

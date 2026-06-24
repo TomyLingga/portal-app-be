@@ -7,10 +7,9 @@ export const createEmployeeSchema = z.object({
   nama:                 z.string().min(1).max(150),
   jenisKelamin:         z.enum(['L', 'P']).refine(v => ['L', 'P'].includes(v), { message: "jenisKelamin harus 'L' atau 'P'" }),
   jabatan:              z.string().min(1).max(150),
-  grade:                z.string().max(10).optional().nullable(),
+  gradeId:              z.string().uuid().optional().nullable(),
   atasanId:             z.string().uuid().optional().nullable(),
-  bagianId:             z.string().uuid().optional().nullable(),
-  subBagianId:          z.string().uuid().optional().nullable(),
+  unitOrganisasiId:     z.string().uuid().optional().nullable(),
   tanggalMasuk:         z.string().date('Format tanggal: YYYY-MM-DD').optional().nullable(),
   tempatLahir:          z.string().max(100).optional().nullable(),
   tanggalLahir:         z.string().date('Format tanggal: YYYY-MM-DD').optional().nullable(),
@@ -25,11 +24,12 @@ export const createEmployeeSchema = z.object({
 export const updateEmployeeSchema = createEmployeeSchema.partial()
 
 export const listEmployeeQuerySchema = z.object({
-  page:       z.coerce.number().int().min(1).default(1),
-  limit:      z.coerce.number().int().min(1).max(200).default(50),
-  search:     z.string().optional(), // cari nama / nrk / nik
-  bagianId:   z.string().uuid().optional(),
-  isActive:   z.coerce.boolean().optional(),
+  page:             z.coerce.number().int().min(1).default(1),
+  limit:            z.coerce.number().int().min(1).max(200).default(50),
+  search:           z.string().optional(), // cari nama / nrk / nik
+  unitOrganisasiId: z.string().uuid().optional(),
+  gradeId:          z.string().uuid().optional(),
+  isActive:         z.coerce.boolean().optional(),
 })
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>

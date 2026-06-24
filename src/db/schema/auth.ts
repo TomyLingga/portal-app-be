@@ -1,7 +1,10 @@
 // ─── Schema: Auth (user, aplikasi, access, SSO) ───────────────────────────────
+import crypto from 'crypto'
 import { pgTable, uuid, varchar, boolean, timestamp, text, integer, pgEnum } from 'drizzle-orm/pg-core'
 import { relations }  from 'drizzle-orm'
 import { employee }   from './employee'
+
+const genUUID = () => crypto.randomUUID()
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 // user        → hanya bisa lihat portal & akses aplikasi yang diberikan
@@ -14,7 +17,7 @@ export const authModeEnum = pgEnum('auth_mode', ['sso', 'independent'])
 
 // ─── User ─────────────────────────────────────────────────────────────────────
 export const user = pgTable('user', {
-  id:           uuid('id').primaryKey().defaultRandom(),
+  id:           uuid('id').primaryKey().$defaultFn(genUUID),
   email:        varchar('email',         { length: 255 }).notNull().unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   role:         roleEnum('role').notNull().default('user'),
@@ -29,7 +32,7 @@ export const user = pgTable('user', {
 
 // ─── Aplikasi ─────────────────────────────────────────────────────────────────
 export const aplikasi = pgTable('aplikasi', {
-  id:        uuid('id').primaryKey().defaultRandom(),
+  id:        uuid('id').primaryKey().$defaultFn(genUUID),
   nama:      varchar('nama',      { length: 150 }).notNull(),
   url:       varchar('url',       { length: 500 }).notNull(),
   authMode:  authModeEnum('auth_mode').notNull().default('independent'),
@@ -43,7 +46,7 @@ export const aplikasi = pgTable('aplikasi', {
 
 // ─── App User Access ──────────────────────────────────────────────────────────
 export const appUserAccess = pgTable('app_user_access', {
-  id:          uuid('id').primaryKey().defaultRandom(),
+  id:          uuid('id').primaryKey().$defaultFn(genUUID),
   userId:      uuid('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   appId:       uuid('app_id').notNull().references(() => aplikasi.id, { onDelete: 'cascade' }),
   grantedAt:   timestamp('granted_at').notNull().defaultNow(),
@@ -54,7 +57,7 @@ export const appUserAccess = pgTable('app_user_access', {
 // Long-lived token untuk auto-renew access token.
 // Setiap login generate satu refresh token baru (bisa multi-device).
 export const refreshToken = pgTable('refresh_token', {
-  id:         uuid('id').primaryKey().defaultRandom(),
+  id:         uuid('id').primaryKey().$defaultFn(genUUID),
   userId:     uuid('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   tokenHash:  varchar('token_hash', { length: 500 }).notNull().unique(),
   issuedAt:   timestamp('issued_at').notNull().defaultNow(),
@@ -66,7 +69,7 @@ export const refreshToken = pgTable('refresh_token', {
 // Short-lived token (5 menit) saat user klik aplikasi SSO di portal.
 // Aplikasi target melakukan POST /api/sso/verify dengan token ini.
 export const ssoToken = pgTable('sso_token', {
-  id:        uuid('id').primaryKey().defaultRandom(),
+  id:        uuid('id').primaryKey().$defaultFn(genUUID),
   userId:    uuid('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   appId:     uuid('app_id').notNull().references(() => aplikasi.id, { onDelete: 'cascade' }),
   tokenHash: varchar('token_hash', { length: 500 }).notNull(),

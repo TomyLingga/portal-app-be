@@ -26,7 +26,8 @@ export async function listEmployeesService(query: ListEmployeeQuery) {
       )!
     )
   }
-  if (query.bagianId) conditions.push(eq(employee.bagianId,  query.bagianId))
+  if (query.unitOrganisasiId) conditions.push(eq(employee.unitOrganisasiId, query.unitOrganisasiId))
+  if (query.gradeId)          conditions.push(eq(employee.gradeId, query.gradeId))
   if (query.isActive !== undefined) conditions.push(eq(employee.isActive, query.isActive))
 
   const where = conditions.length ? and(...conditions) : undefined
@@ -70,9 +71,9 @@ export async function createEmployeeService(input: CreateEmployeeInput) {
     .insert(employee)
     .values({
       ...input,
+      gradeId:              input.gradeId              ?? null,
       atasanId:             input.atasanId             ?? null,
-      bagianId:             input.bagianId             ?? null,
-      subBagianId:          input.subBagianId          ?? null,
+      unitOrganisasiId:     input.unitOrganisasiId     ?? null,
       statusKaryawanId:     input.statusKaryawanId     ?? null,
       pendidikanTerakhirId: input.pendidikanTerakhirId ?? null,
       statusPernikahanId:   input.statusPernikahanId   ?? null,

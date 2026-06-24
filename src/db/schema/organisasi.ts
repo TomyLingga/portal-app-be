@@ -1,29 +1,31 @@
-// ─── Schema: Organisasi ───────────────────────────────────────────────────────
-import { pgTable, uuid, varchar, boolean } from 'drizzle-orm/pg-core'
-import { relations }                        from 'drizzle-orm'
+// ─── Schema: Organisasi (Hierarki Self-Referencing) ───────────────────────────
+import crypto from 'crypto'
+import { pgTable, uuid, varchar, boolean, pgEnum } from 'drizzle-orm/pg-core'
+import { relations } from 'drizzle-orm'
 
-// ─── Bagian (Divisi / Department) ────────────────────────────────────────────
-export const bagian = pgTable('bagian', {
-  id:       uuid('id').primaryKey().defaultRandom(),
+const genUUID = () => crypto.randomUUID()
+
+// Tipe unit organisasi — fleksibel, bisa ditambah level baru tanpa ubah schema
+export const tipeUnitEnum = pgEnum('tipe_unit', [
+  'direktorat',   // Level tertinggi (Direktur Utama)
+  'sevp',         // Senior Executive VP
+  'bagian',       // Bagian / Departemen
+  'sub_bagian',   // Sub Bagian
+  'seksi',        // Seksi / Supervisor
+])
+
+// ─── Unit Organisasi ──────────────────────────────────────────────────────────
+export const unitOrganisasi = pgTable('unit_organisasi', {
+  id:       uuid('id').primaryKey().$defaultFn(genUUID),
   nama:     varchar('nama', { length: 150 }).notNull(),
   kode:     varchar('kode', { length: 20  }).notNull().unique(),
-  isActive: boolean('is_active').notNull().default(true),
-})
-
-// ─── Sub Bagian ───────────────────────────────────────────────────────────────
-export const subBagian = pgTable('sub_bagian', {
-  id:       uuid('id').primaryKey().defaultRandom(),
-  nama:     varchar('nama', { length: 150 }).notNull(),
-  kode:     varchar('kode', { length: 20  }).notNull().unique(),
-  bagianId: uuid('bagian_id').notNull().references(() => bagian.id),
+  tipe:     tipeUnitEnum('tipe').notNull(),
+  parentId: uuid('parent_id').references((): any => unitOrganisasi.id),
   isActive: boolean('is_active').notNull().default(true),
 })
 
 // ─── Relations ────────────────────────────────────────────────────────────────
-export const bagianRelations = relations(bagian, ({ many }) => ({
-  subBagian: many(subBagian),
-}))
-
-export const subBagianRelations = relations(subBagian, ({ one }) => ({
-  bagian: one(bagian, { fields: [subBagian.bagianId], references: [bagian.id] }),
+export const unitOrganisasiRelations = relations(unitOrganisasi, ({ one, many }) => ({
+  parent:   one(unitOrganisasi, { fields: [unitOrganisasi.parentId], references: [unitOrganisasi.id], relationName: 'parent' }),
+  children: many(unitOrganisasi, { relationName: 'parent' }),
 }))
