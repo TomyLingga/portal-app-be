@@ -6,8 +6,8 @@ import Fastify      from 'fastify'
 import cors         from '@fastify/cors'
 import fastifyStatic from '@fastify/static'
 import multipart    from '@fastify/multipart'
-import { ZodError } from 'zod'
 import { config }   from './config/env'
+import { errorHandler } from './utils/errorHandler'
 
 import jwtPlugin    from './plugins/jwt'
 import authPlugin   from './plugins/auth'
@@ -36,27 +36,7 @@ const fastify = Fastify({
 })
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
-fastify.setErrorHandler((error: unknown, _req, reply) => {
-  if (error instanceof ZodError) {
-    return reply.code(422).send({
-      success: false,
-      error:   'Validasi gagal',
-      details: error.issues.map(e => ({ field: e.path.join('.'), message: e.message })),
-    })
-  }
-
-  const err = error as Error & { statusCode?: number }
-
-  if (err.message && !err.statusCode) {
-    return reply.code(400).send({ success: false, error: err.message })
-  }
-
-  fastify.log.error(err)
-  return reply.code(err.statusCode ?? 500).send({
-    success: false,
-    error: config.app.nodeEnv === 'production' ? 'Internal server error' : err.message,
-  })
-})
+fastify.setErrorHandler(errorHandler)
 
 // ─── Plugins ──────────────────────────────────────────────────────────────────
 async function buildApp() {
