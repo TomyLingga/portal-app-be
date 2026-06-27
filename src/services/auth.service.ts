@@ -1,8 +1,8 @@
 // ─── Service: Auth ────────────────────────────────────────────────────────────
 import crypto            from 'crypto'
-import { eq, sql, and } from 'drizzle-orm'
+import { eq, sql, and, desc, or, isNull } from 'drizzle-orm'
 import { db }            from '../db'
-import { user as userTable, refreshToken as refreshTokenTable } from '../db/schema'
+import { user as userTable, refreshToken as refreshTokenTable, ssoToken, aplikasi, notification, userNotificationStatus } from '../db/schema'
 import { hashPassword, verifyPassword } from '../utils/hash'
 import { LoginInput }    from '../validators/auth.validator'
 import { config }        from '../config/env'
@@ -150,4 +150,181 @@ export async function getMeService(userId: string) {
 
   if (!found) throw new Error('User tidak ditemukan')
   return found
+}
+
+// ─── Helper: relative time formatter ──────────────────────────────────────────
+function formatRelativeTime(date: Date): string {
+  const diffMs = Date.now() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffDays > 0) return `${diffDays} hari lalu`
+  if (diffHours > 0) return `${diffHours} jam lalu`
+  if (diffMins > 0) return `${diffMins} menit lalu`
+  return 'Baru saja'
+}
+
+// ─── Get Notifications ────────────────────────────────────────────────────────
+export async function getNotificationsService(userId: string) {
+  // Check if there are no notifications at all, seed with defaults
+  const countRes = await db.select({ val: sql<number>`count(*)` }).from(notification)
+  if (Number(countRes[0].val) === 0) {
+    await db.insert(notification).values([
+      {
+        category: 'warning',
+        title: 'Pemeliharaan Sistem Terjadwal',
+        message: 'Portal SSO akan menjalani pemeliharaan rutin pada hari Sabtu pukul 23.00-01.00 WIB. Simpan pekerjaan Anda sebelum waktu tersebut.',
+        userId: null,
+      },
+      {
+        category: 'success',
+        title: 'Kebijakan Keamanan 2FA Baru',
+        message: 'Untuk meningkatkan keamanan data perusahaan, autentikasi dua faktor (2FA) diwajibkan untuk seluruh akun karyawan mulai bulan depan.',
+        userId: null,
+      }
+    ])
+  }
+
+  // Query notifications for user (personal + global)
+  const list = await db
+    .select({
+      id: notification.id,
+      category: notification.category,
+      title: notification.title,
+      message: notification.message,
+      createdAt: notification.createdAt,
+      isRead: sql<boolean>`COALESCE(${userNotificationStatus.isRead}, false)`.mapWith(Boolean),
+    })
+    .from(notification)
+    .leftJoin(
+      userNotificationStatus,
+      and(
+        eq(userNotificationStatus.notificationId, notification.id),
+        eq(userNotificationStatus.userId, userId)
+      )
+    )
+    .where(
+      and(
+        or(
+          eq(notification.userId, userId),
+          isNull(notification.userId)
+        ),
+        or(
+          eq(userNotificationStatus.isCleared, false),
+          isNull(userNotificationStatus.isCleared)
+        )
+      )
+    )
+    .orderBy(desc(notification.createdAt))
+
+  const formatted = list.map(item => ({
+    id: item.id,
+    category: item.category,
+    title: item.title,
+    message: item.message,
+    timestamp: formatRelativeTime(item.createdAt),
+    isRead: item.isRead,
+  }))
+
+  return formatted
+}
+
+export async function markNotificationAsReadService(userId: string, notificationId: string) {
+  const [existing] = await db
+    .select()
+    .from(userNotificationStatus)
+    .where(and(
+      eq(userNotificationStatus.userId, userId),
+      eq(userNotificationStatus.notificationId, notificationId)
+    ))
+    .limit(1)
+
+  if (existing) {
+    await db
+      .update(userNotificationStatus)
+      .set({ isRead: true, updatedAt: new Date() })
+      .where(eq(userNotificationStatus.id, existing.id))
+  } else {
+    await db
+      .insert(userNotificationStatus)
+      .values({
+        userId,
+        notificationId,
+        isRead: true,
+      })
+  }
+}
+
+export async function markAllNotificationsAsReadService(userId: string) {
+  const list = await db
+    .select({ id: notification.id })
+    .from(notification)
+    .where(or(
+      eq(notification.userId, userId),
+      isNull(notification.userId)
+    ))
+
+  for (const item of list) {
+    const [existing] = await db
+      .select()
+      .from(userNotificationStatus)
+      .where(and(
+        eq(userNotificationStatus.userId, userId),
+        eq(userNotificationStatus.notificationId, item.id)
+      ))
+      .limit(1)
+
+    if (existing) {
+      await db
+        .update(userNotificationStatus)
+        .set({ isRead: true, updatedAt: new Date() })
+        .where(eq(userNotificationStatus.id, existing.id))
+    } else {
+      await db
+        .insert(userNotificationStatus)
+        .values({
+          userId,
+          notificationId: item.id,
+          isRead: true,
+        })
+    }
+  }
+}
+
+export async function clearAllNotificationsService(userId: string) {
+  const list = await db
+    .select({ id: notification.id })
+    .from(notification)
+    .where(or(
+      eq(notification.userId, userId),
+      isNull(notification.userId)
+    ))
+
+  for (const item of list) {
+    const [existing] = await db
+      .select()
+      .from(userNotificationStatus)
+      .where(and(
+        eq(userNotificationStatus.userId, userId),
+        eq(userNotificationStatus.notificationId, item.id)
+      ))
+      .limit(1)
+
+    if (existing) {
+      await db
+        .update(userNotificationStatus)
+        .set({ isCleared: true, updatedAt: new Date() })
+        .where(eq(userNotificationStatus.id, existing.id))
+    } else {
+      await db
+        .insert(userNotificationStatus)
+        .values({
+          userId,
+          notificationId: item.id,
+          isRead: true,
+          isCleared: true,
+        })
+    }
+  }
 }

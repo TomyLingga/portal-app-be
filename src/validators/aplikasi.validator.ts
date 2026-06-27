@@ -9,6 +9,7 @@ export const createAplikasiSchema = z.object({
   deskripsi: z.string().optional().nullable(),
   urutan:    z.number().int().min(0).default(0),
   isActive:  z.boolean().default(true),
+  warna:     z.string().max(50).optional().default('#3b82f6'),
 })
 
 export const updateAplikasiSchema = createAplikasiSchema.partial()

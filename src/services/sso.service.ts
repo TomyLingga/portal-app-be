@@ -2,7 +2,7 @@
 import crypto           from 'crypto'
 import { eq, and }      from 'drizzle-orm'
 import { db }           from '../db'
-import { ssoToken, aplikasi, user as userTable, appUserAccess } from '../db/schema'
+import { ssoToken, aplikasi, user as userTable, appUserAccess, notification } from '../db/schema'
 import { config }       from '../config/env'
 
 /**
@@ -43,6 +43,18 @@ export async function generateSSOTokenService(userId: string, appId: string) {
     tokenHash,
     expiresAt,
   })
+
+  // Log notification to database
+  try {
+    await db.insert(notification).values({
+      category: 'security',
+      title: 'Akses Aplikasi Berhasil',
+      message: `Akun Anda berhasil melakukan login Single Sign-On (SSO) ke aplikasi "${app.nama}".`,
+      userId,
+    })
+  } catch (err) {
+    // Ignore notification log error
+  }
 
   return { token: rawToken, expiresAt, redirectUrl: app.url }
 }

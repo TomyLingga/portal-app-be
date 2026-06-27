@@ -16,6 +16,7 @@ export const createEmployeeSchema = z.object({
   statusKaryawanId:     z.string().uuid().optional().nullable(),
   pendidikanTerakhirId: z.string().uuid().optional().nullable(),
   statusPernikahanId:   z.string().uuid().optional().nullable(),
+  penempatanAreaId:     z.string().uuid().optional().nullable(),
   nomorHp:              z.string().max(20).optional().nullable(),
   alamat:               z.string().optional().nullable(),
   isActive:             z.boolean().default(true),
@@ -25,7 +26,7 @@ export const updateEmployeeSchema = createEmployeeSchema.partial()
 
 export const listEmployeeQuerySchema = z.object({
   page:             z.coerce.number().int().min(1).default(1),
-  limit:            z.coerce.number().int().min(1).max(200).default(50),
+  limit:            z.coerce.number().int().min(1).max(200).default(2),
   search:           z.string().optional(), // cari nama / nrk / nik
   unitOrganisasiId: z.string().uuid().optional(),
   gradeId:          z.string().uuid().optional(),

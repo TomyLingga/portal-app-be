@@ -1,7 +1,7 @@
 // ─── Service: Aplikasi ────────────────────────────────────────────────────────
 import { eq, ilike, and, count, SQL } from 'drizzle-orm'
 import { db }        from '../db'
-import { aplikasi }  from '../db/schema'
+import { aplikasi, notification }  from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type { CreateAplikasiInput, UpdateAplikasiInput, ListAplikasiQuery } from '../validators/aplikasi.validator'
 
@@ -33,6 +33,19 @@ export async function getAplikasiByIdService(id: string) {
 
 export async function createAplikasiService(input: CreateAplikasiInput) {
   const [created] = await db.insert(aplikasi).values(input).returning()
+
+  // Log notification to database
+  try {
+    await db.insert(notification).values({
+      category: 'info',
+      title: 'Aplikasi Baru Terintegrasi',
+      message: `Aplikasi "${created.nama}" kini telah terintegrasi di Portal SSO PT INL dan siap diakses.`,
+      userId: null,
+    })
+  } catch (err) {
+    // Ignore notification log error
+  }
+
   return created
 }
 

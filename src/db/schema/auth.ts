@@ -40,6 +40,7 @@ export const aplikasi = pgTable('aplikasi', {
   deskripsi: text('deskripsi'),
   urutan:    integer('urutan').notNull().default(0),
   isActive:  boolean('is_active').notNull().default(true),
+  warna:     varchar('warna',     { length: 50 }).notNull().default('#3b82f6'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 })

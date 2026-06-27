@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { pgTable, uuid, varchar, boolean, date, text, timestamp } from 'drizzle-orm/pg-core'
 import { relations }                  from 'drizzle-orm'
 import { unitOrganisasi }             from './organisasi'
-import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade } from './master'
+import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade, refPenempatanArea } from './master'
 
 const genUUID = () => crypto.randomUUID()
 
@@ -24,6 +24,7 @@ export const employee = pgTable('employee', {
   statusKaryawanId:     uuid('status_karyawan_id').references(() => refStatusKaryawan.id),
   pendidikanTerakhirId: uuid('pendidikan_terakhir_id').references(() => refPendidikan.id),
   statusPernikahanId:   uuid('status_pernikahan_id').references(() => refStatusPernikahan.id),
+  penempatanAreaId:     uuid('penempatan_area_id').references(() => refPenempatanArea.id),
   nomorHp:              varchar('nomor_hp',  { length: 20  }),
   alamat:               text('alamat'),
   isActive:             boolean('is_active').notNull().default(true),
@@ -40,4 +41,5 @@ export const employeeRelations = relations(employee, ({ one, many }) => ({
   statusKaryawan:     one(refStatusKaryawan,   { fields: [employee.statusKaryawanId],     references: [refStatusKaryawan.id] }),
   pendidikanTerakhir: one(refPendidikan,       { fields: [employee.pendidikanTerakhirId], references: [refPendidikan.id] }),
   statusPernikahan:   one(refStatusPernikahan, { fields: [employee.statusPernikahanId],   references: [refStatusPernikahan.id] }),
+  penempatanArea:     one(refPenempatanArea,   { fields: [employee.penempatanAreaId],     references: [refPenempatanArea.id] }),
 }))

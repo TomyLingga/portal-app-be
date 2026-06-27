@@ -9,6 +9,8 @@ import {
   refPendidikan,
   refStatusPernikahan,
   refGrade,
+  refTipeUnit,
+  refPenempatanArea,
   user,
 } from './schema'
 
@@ -70,21 +72,41 @@ async function seed() {
   // ── Ref Grade ──────────────────────────────────────────────────────────────
   console.log('   → ref_grade')
   const gradeData = [
-    { kode: 'BOD',   label: 'Board of Director',     level: 1,  keterangan: 'Direktur' },
-    { kode: 'BOM',   label: 'Board of Management',   level: 2,  keterangan: 'SEVP' },
-    { kode: 'BOM-1', label: 'Manager',               level: 3,  keterangan: 'Kepala Bagian' },
-    { kode: 'BOM-2', label: 'Asst. Manager',         level: 4,  keterangan: 'Kepala Sub Bagian' },
-    { kode: 'BOM-3', label: 'Supervisor',             level: 5,  keterangan: 'Supervisor / Kepala Seksi' },
+    { kode: 'BOD',   label: 'Board of Director',     level: 20,  keterangan: 'Direktur' },
+    { kode: 'BOM',   label: 'Board of Management',   level: 10,  keterangan: 'SEVP' },
+    { kode: 'BOM-1', label: 'Manager',               level: 9,  keterangan: 'Kepala Bagian' },
+    { kode: 'BOM-2', label: 'Asst. Manager',         level: 8,  keterangan: 'Kepala Sub Bagian' },
+    { kode: 'BOM-3', label: 'Supervisor',             level: 7,  keterangan: 'Supervisor / Kepala Seksi' },
     { kode: 'BOM-4', label: 'Senior Staff',           level: 6,  keterangan: 'Staff Senior' },
-    { kode: '3A',    label: 'Staff III-A',            level: 7,  keterangan: 'Staff' },
-    { kode: '3B',    label: 'Staff III-B',            level: 8,  keterangan: 'Staff' },
-    { kode: '2A',    label: 'Staff II-A',             level: 9,  keterangan: 'Staff Junior' },
-    { kode: '2B',    label: 'Staff II-B',             level: 10, keterangan: 'Staff Junior' },
-    { kode: '1A',    label: 'Staff I-A',              level: 11, keterangan: 'Staff Pemula' },
-    { kode: '1B',    label: 'Staff I-B',              level: 12, keterangan: 'Staff Pemula' },
   ]
   for (const data of gradeData) {
     await db.insert(refGrade).values(data).onConflictDoNothing()
+  }
+
+  // ── Ref Tipe Unit ──────────────────────────────────────────────────────────
+  console.log('   → ref_tipe_unit')
+  await db.delete(refTipeUnit)
+  const tipeUnitData = [
+    { kode: 'direktorat', label: 'Direktorat', level: 5, warna: '#f59e0b' },
+    { kode: 'sevp',       label: 'SEVP',       level: 4, warna: '#6366f1' },
+    { kode: 'bagian',     label: 'Bagian',     level: 3, warna: '#10b981' },
+    { kode: 'sub_bagian', label: 'Sub Bagian', level: 2, warna: '#3b82f6' },
+    { kode: 'seksi',      label: 'Seksi',      level: 1, warna: '#ec4899' },
+  ]
+  for (const data of tipeUnitData) {
+    await db.insert(refTipeUnit).values(data).onConflictDoNothing()
+  }
+
+  // ── Ref Penempatan Area ────────────────────────────────────────────────────
+  console.log('   → ref_penempatan_area')
+  const penempatanAreaData = [
+    { nama: 'PKS Sei Mangkei', longitude: '99.3732', latitude: '3.1972' },
+    { nama: 'Kantor Direksi Medan', longitude: '98.6782', latitude: '3.5852' },
+    { nama: 'Gudang Logistik Kuala Tanjung', longitude: '99.4445', latitude: '3.3855' }
+  ]
+  for (const data of penempatanAreaData) {
+    // We match by name for conflict avoidance, or just insert
+    await db.insert(refPenempatanArea).values(data).onConflictDoNothing()
   }
 
   // ── Super Admin User ───────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ export const updateUnitOrganisasiSchema = createUnitOrganisasiSchema.partial()
 
 export const listUnitOrganisasiQuerySchema = z.object({
   page:     z.coerce.number().int().min(1).default(1),
-  limit:    z.coerce.number().int().min(1).max(200).default(50),
+  limit:    z.coerce.number().int().min(1).max(1000).default(50),
   search:   z.string().optional(),
   tipe:     z.enum(tipeUnitValues).optional(),
   parentId: z.string().uuid().optional(),

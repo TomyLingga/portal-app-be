@@ -35,3 +35,20 @@ export const refGrade = pgTable('ref_grade', {
   level:      integer('level').notNull().default(0),
   keterangan: text('keterangan'),
 })
+
+// Tipe Unit Organisasi
+export const refTipeUnit = pgTable('ref_tipe_unit', {
+  id:    uuid('id').primaryKey().$defaultFn(genUUID),
+  kode:  varchar('kode',  { length: 20  }).notNull().unique(),
+  label: varchar('label', { length: 100 }).notNull(),
+  level: integer('level').notNull().default(1),
+  warna: varchar('warna', { length: 50 }).notNull(),
+})
+
+// Penempatan Area Kerja
+export const refPenempatanArea = pgTable('ref_penempatan_area', {
+  id:        uuid('id').primaryKey().$defaultFn(genUUID),
+  nama:      varchar('nama',      { length: 150 }).notNull(),
+  longitude: varchar('longitude', { length: 50 }).notNull(),
+  latitude:  varchar('latitude',  { length: 50 }).notNull(),
+})

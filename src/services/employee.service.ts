@@ -77,6 +77,7 @@ export async function createEmployeeService(input: CreateEmployeeInput) {
       statusKaryawanId:     input.statusKaryawanId     ?? null,
       pendidikanTerakhirId: input.pendidikanTerakhirId ?? null,
       statusPernikahanId:   input.statusPernikahanId   ?? null,
+      penempatanAreaId:     input.penempatanAreaId     ?? null,
     })
     .returning()
 

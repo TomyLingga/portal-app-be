@@ -1,7 +1,7 @@
 // ─── Routes: Auth ─────────────────────────────────────────────────────────────
 import { FastifyInstance } from 'fastify'
 import { loginSchema, refreshTokenSchema }     from '../validators/auth.validator'
-import { loginService, logoutService, getMeService, refreshTokenService } from '../services/auth.service'
+import { loginService, logoutService, getMeService, refreshTokenService, getNotificationsService, markNotificationAsReadService, markAllNotificationsAsReadService, clearAllNotificationsService } from '../services/auth.service'
 import { ok, err }         from '../utils/response'
 
 export default async function authRoutes(fastify: FastifyInstance) {
@@ -34,6 +34,39 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const data = await getMeService(request.user.sub)
     return reply.code(200).send(ok(data))
+  })
+
+  // GET /api/auth/notifications
+  fastify.get('/notifications', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const list = await getNotificationsService(request.user.sub)
+    return reply.code(200).send(ok(list))
+  })
+
+  // PUT /api/auth/notifications/:id/read
+  fastify.put('/notifications/:id/read', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    await markNotificationAsReadService(request.user.sub, id)
+    return reply.code(200).send(ok({ message: 'Notifikasi ditandai dibaca' }))
+  })
+
+  // PUT /api/auth/notifications/read-all
+  fastify.put('/notifications/read-all', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    await markAllNotificationsAsReadService(request.user.sub)
+    return reply.code(200).send(ok({ message: 'Semua notifikasi ditandai dibaca' }))
+  })
+
+  // PUT /api/auth/notifications/clear-all
+  fastify.put('/notifications/clear-all', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    await clearAllNotificationsService(request.user.sub)
+    return reply.code(200).send(ok({ message: 'Semua notifikasi dihapus' }))
   })
 }
 
