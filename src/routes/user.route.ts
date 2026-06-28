@@ -7,6 +7,9 @@ import {
   listUsersService, getUserByIdService, createUserService,
   updateUserService, deleteUserService,
   grantAppService, revokeAppService, getUserAppsService,
+  listAllPasskeysService, deletePasskeyAdminService,
+  listUsers2faService, disableUser2faService,
+  deleteAllUserPasskeysService,
 } from '../services/user.service'
 import { ok } from '../utils/response'
 
@@ -25,6 +28,39 @@ export default async function userRoutes(fastify: FastifyInstance) {
     const input  = createUserSchema.parse(request.body)
     const result = await createUserService(input)
     return reply.code(201).send(ok(result))
+  })
+
+  // GET /api/users/passkeys
+  fastify.get('/passkeys', { preHandler: adminOnly }, async (request, reply) => {
+    const result = await listAllPasskeysService()
+    return reply.send(ok(result))
+  })
+
+  // DELETE /api/users/passkeys/:id
+  fastify.delete('/passkeys/:id', { preHandler: adminOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    await deletePasskeyAdminService(id)
+    return reply.code(204).send()
+  })
+
+  // DELETE /api/users/:id/passkeys
+  fastify.delete('/:id/passkeys', { preHandler: adminOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    await deleteAllUserPasskeysService(id)
+    return reply.code(204).send()
+  })
+
+  // GET /api/users/2fa
+  fastify.get('/2fa', { preHandler: adminOnly }, async (request, reply) => {
+    const result = await listUsers2faService()
+    return reply.send(ok(result))
+  })
+
+  // POST /api/users/:id/2fa/disable
+  fastify.post('/:id/2fa/disable', { preHandler: adminOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    await disableUser2faService(id)
+    return reply.send(ok({ message: '2FA berhasil dinonaktifkan' }))
   })
 
   // GET /api/users/:id

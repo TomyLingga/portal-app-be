@@ -2,7 +2,7 @@
 import crypto            from 'crypto'
 import { eq, sql, and, desc, or, isNull } from 'drizzle-orm'
 import { db }            from '../db'
-import { user as userTable, refreshToken as refreshTokenTable, ssoToken, aplikasi, notification, userNotificationStatus, employee, userPasskey } from '../db/schema'
+import { user as userTable, refreshToken as refreshTokenTable, ssoToken, aplikasi, activityLog, employee, userPasskey } from '../db/schema'
 import { hashPassword, verifyPassword } from '../utils/hash'
 import { LoginInput }    from '../validators/auth.validator'
 import { config }        from '../config/env'
@@ -61,6 +61,17 @@ export async function loginService(fastify: FastifyInstance, input: LoginInput) 
 
   // Update lastLogin
   await db.update(userTable).set({ lastLogin: new Date() }).where(eq(userTable.id, found.id))
+
+  // Log activity
+  try {
+    await db.insert(activityLog).values({
+      userId: found.id,
+      action: 'login',
+      details: 'Login ke portal dengan password',
+    })
+  } catch (err) {
+    // Ignore logging error
+  }
 
   const accessToken  = fastify.jwt.sign({
     sub:          found.id,
@@ -143,6 +154,15 @@ export async function logoutService(userId: string) {
       .set({ isRevoked: true })
       .where(eq(refreshTokenTable.userId, userId)),
   ])
+  try {
+    await db.insert(activityLog).values({
+      userId,
+      action: 'logout',
+      details: 'Logout dari portal',
+    })
+  } catch (err) {
+    // Ignore logging error
+  }
 }
 
 // ─── Get Me ───────────────────────────────────────────────────────────────────
@@ -198,169 +218,7 @@ function formatRelativeTime(date: Date): string {
   return 'Baru saja'
 }
 
-// ─── Get Notifications ────────────────────────────────────────────────────────
-export async function getNotificationsService(userId: string) {
-  // Check if there are no notifications at all, seed with defaults
-  const countRes = await db.select({ val: sql<number>`count(*)` }).from(notification)
-  if (Number(countRes[0].val) === 0) {
-    await db.insert(notification).values([
-      {
-        category: 'warning',
-        title: 'Pemeliharaan Sistem Terjadwal',
-        message: 'Portal SSO akan menjalani pemeliharaan rutin pada hari Sabtu pukul 23.00-01.00 WIB. Simpan pekerjaan Anda sebelum waktu tersebut.',
-        userId: null,
-      },
-      {
-        category: 'success',
-        title: 'Kebijakan Keamanan 2FA Baru',
-        message: 'Untuk meningkatkan keamanan data perusahaan, autentikasi dua faktor (2FA) diwajibkan untuk seluruh akun karyawan mulai bulan depan.',
-        userId: null,
-      }
-    ])
-  }
 
-  // Query notifications for user (personal + global)
-  const list = await db
-    .select({
-      id: notification.id,
-      category: notification.category,
-      title: notification.title,
-      message: notification.message,
-      createdAt: notification.createdAt,
-      isRead: sql<boolean>`COALESCE(${userNotificationStatus.isRead}, false)`.mapWith(Boolean),
-    })
-    .from(notification)
-    .leftJoin(
-      userNotificationStatus,
-      and(
-        eq(userNotificationStatus.notificationId, notification.id),
-        eq(userNotificationStatus.userId, userId)
-      )
-    )
-    .where(
-      and(
-        or(
-          eq(notification.userId, userId),
-          isNull(notification.userId)
-        ),
-        or(
-          eq(userNotificationStatus.isCleared, false),
-          isNull(userNotificationStatus.isCleared)
-        )
-      )
-    )
-    .orderBy(desc(notification.createdAt))
-
-  const formatted = list.map(item => ({
-    id: item.id,
-    category: item.category,
-    title: item.title,
-    message: item.message,
-    timestamp: formatRelativeTime(item.createdAt),
-    isRead: item.isRead,
-  }))
-
-  return formatted
-}
-
-export async function markNotificationAsReadService(userId: string, notificationId: string) {
-  const [existing] = await db
-    .select()
-    .from(userNotificationStatus)
-    .where(and(
-      eq(userNotificationStatus.userId, userId),
-      eq(userNotificationStatus.notificationId, notificationId)
-    ))
-    .limit(1)
-
-  if (existing) {
-    await db
-      .update(userNotificationStatus)
-      .set({ isRead: true, updatedAt: new Date() })
-      .where(eq(userNotificationStatus.id, existing.id))
-  } else {
-    await db
-      .insert(userNotificationStatus)
-      .values({
-        userId,
-        notificationId,
-        isRead: true,
-      })
-  }
-}
-
-export async function markAllNotificationsAsReadService(userId: string) {
-  const list = await db
-    .select({ id: notification.id })
-    .from(notification)
-    .where(or(
-      eq(notification.userId, userId),
-      isNull(notification.userId)
-    ))
-
-  for (const item of list) {
-    const [existing] = await db
-      .select()
-      .from(userNotificationStatus)
-      .where(and(
-        eq(userNotificationStatus.userId, userId),
-        eq(userNotificationStatus.notificationId, item.id)
-      ))
-      .limit(1)
-
-    if (existing) {
-      await db
-        .update(userNotificationStatus)
-        .set({ isRead: true, updatedAt: new Date() })
-        .where(eq(userNotificationStatus.id, existing.id))
-    } else {
-      await db
-        .insert(userNotificationStatus)
-        .values({
-          userId,
-          notificationId: item.id,
-          isRead: true,
-        })
-    }
-  }
-}
-
-export async function clearAllNotificationsService(userId: string) {
-  const list = await db
-    .select({ id: notification.id })
-    .from(notification)
-    .where(or(
-      eq(notification.userId, userId),
-      isNull(notification.userId)
-    ))
-
-  for (const item of list) {
-    const [existing] = await db
-      .select()
-      .from(userNotificationStatus)
-      .where(and(
-        eq(userNotificationStatus.userId, userId),
-        eq(userNotificationStatus.notificationId, item.id)
-      ))
-      .limit(1)
-
-    if (existing) {
-      await db
-        .update(userNotificationStatus)
-        .set({ isCleared: true, updatedAt: new Date() })
-        .where(eq(userNotificationStatus.id, existing.id))
-    } else {
-      await db
-        .insert(userNotificationStatus)
-        .values({
-          userId,
-          notificationId: item.id,
-          isRead: true,
-          isCleared: true,
-        })
-    }
-  }
-}
 
 
 export async function verifyTotpLoginService(
@@ -394,6 +252,17 @@ export async function verifyTotpLoginService(
   // Update lastLogin
   await db.update(userTable).set({ lastLogin: new Date() }).where(eq(userTable.id, user.id))
 
+  // Log activity
+  try {
+    await db.insert(activityLog).values({
+      userId: user.id,
+      action: 'login',
+      details: 'Login ke portal dengan verifikasi TOTP (2FA)',
+    })
+  } catch (err) {
+    // Ignore logging error
+  }
+
   const accessToken  = fastify.jwt.sign({
     sub:          user.id,
     email:        user.email,
@@ -419,6 +288,7 @@ export async function verifyTotpLoginService(
 export async function setupTotpService(userId: string) {
   const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
   if (!user) throw new Error('User tidak ditemukan')
+  if (user.role === 'super_admin') throw new Error('Dua-Factor Authentication (2FA) tidak diperbolehkan untuk Admin')
 
   const secret = generateTOTPSecret()
   const keyURI = getTOTPKeyURI(user.email, secret)
@@ -433,6 +303,7 @@ export async function setupTotpService(userId: string) {
 export async function enableTotpService(userId: string, secret: string, code: string) {
   const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
   if (!user) throw new Error('User tidak ditemukan')
+  if (user.role === 'super_admin') throw new Error('Dua-Factor Authentication (2FA) tidak diperbolehkan untuk Admin')
 
   const valid = verifyTOTP(secret, code)
   if (!valid) throw new Error('Kode verifikasi salah atau kadaluwarsa')

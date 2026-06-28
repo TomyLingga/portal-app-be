@@ -1,7 +1,7 @@
 // ─── Service: Aplikasi ────────────────────────────────────────────────────────
 import { eq, ilike, and, count, SQL } from 'drizzle-orm'
 import { db }        from '../db'
-import { aplikasi, notification }  from '../db/schema'
+import { aplikasi, activityLog }  from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type { CreateAplikasiInput, UpdateAplikasiInput, ListAplikasiQuery } from '../validators/aplikasi.validator'
 import { deleteFile, buildFileUrl } from '../utils/file'
@@ -35,17 +35,7 @@ export async function getAplikasiByIdService(id: string) {
 export async function createAplikasiService(input: CreateAplikasiInput) {
   const [created] = await db.insert(aplikasi).values(input).returning()
 
-  // Log notification to database
-  try {
-    await db.insert(notification).values({
-      category: 'info',
-      title: 'Aplikasi Baru Terintegrasi',
-      message: `Aplikasi "${created.nama}" kini telah terintegrasi di Portal SSO PT INL dan siap diakses.`,
-      userId: null,
-    })
-  } catch (err) {
-    // Ignore notification log error
-  }
+
 
   return created
 }
@@ -96,3 +86,16 @@ export async function updateAplikasiIconService(id: string, filename: string) {
 
   return { iconUrl: buildFileUrl(updated.icon) }
 }
+
+export async function logAppAccessService(userId: string, appId: string) {
+  const [app] = await db.select({ nama: aplikasi.nama }).from(aplikasi).where(eq(aplikasi.id, appId)).limit(1)
+  if (!app) throw new Error('Aplikasi tidak ditemukan')
+
+  await db.insert(activityLog).values({
+    userId,
+    appId,
+    action: 'access_app',
+    details: `Mengakses aplikasi Independent "${app.nama}"`,
+  })
+}
+

@@ -1,10 +1,13 @@
 // ─── Routes: Master Data ──────────────────────────────────────────────────────
 import { FastifyInstance, FastifyReply }   from 'fastify'
+import path from 'path'
+import { config } from '../config/env'
 import { db }                from '../db'
 import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade, refTipeUnit, refPenempatanArea } from '../db/schema'
 import { ok }                from '../utils/response'
 import { eq, desc }          from 'drizzle-orm'
-import { getMasterStatsService } from '../services/master.service'
+import { getMasterStatsService, getPaginatedLogsService } from '../services/master.service'
+import { checkDomainStatus, checkDatabaseStatus, checkStorageStatus, checkSSLCertificate } from '../services/health.service'
 
 /**
  * Helper to validate required request body fields.
@@ -214,6 +217,59 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     try {
       const stats = await getMasterStatsService(currentYear, currentMonth)
       return reply.send(ok(stats))
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.code(500).send({ success: false, error: 'Internal Server Error' })
+    }
+  })
+
+  // GET /api/master/logs
+  fastify.get('/logs', { preHandler: authOnly }, async (request, reply) => {
+    const query = request.query as {
+      page?: string
+      limit?: string
+      search?: string
+      startDate?: string
+      endDate?: string
+    }
+    const page = query.page ? parseInt(query.page, 10) : 1
+    const limit = query.limit ? parseInt(query.limit, 10) : 10
+    const search = query.search
+    const startDate = query.startDate
+    const endDate = query.endDate
+
+    try {
+      const result = await getPaginatedLogsService({ page, limit, search, startDate, endDate })
+      return reply.send(ok(result))
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.code(500).send({ success: false, error: 'Internal Server Error' })
+    }
+  })
+
+  // GET /api/master/health
+  fastify.get('/health', { preHandler: authOnly }, async (request, reply) => {
+    try {
+      const uploadDir = path.resolve(config.upload.dir)
+      
+      const [domain, database, storage, ssl] = await Promise.all([
+        checkDomainStatus('inl.co.id'),
+        checkDatabaseStatus(),
+        checkStorageStatus(uploadDir),
+        checkSSLCertificate('inl.co.id')
+      ])
+
+      return reply.send(ok({
+        uptime: process.uptime(),
+        domain,
+        api: {
+          status: 'online',
+          timestamp: new Date().toISOString()
+        },
+        database,
+        storage,
+        ssl
+      }))
     } catch (error) {
       fastify.log.error(error)
       return reply.code(500).send({ success: false, error: 'Internal Server Error' })

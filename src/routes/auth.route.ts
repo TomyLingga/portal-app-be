@@ -1,15 +1,12 @@
 // ─── Routes: Auth ─────────────────────────────────────────────────────────────
 import { FastifyInstance } from 'fastify'
+import { MultipartFile }  from '@fastify/multipart'
 import { loginSchema, refreshTokenSchema }     from '../validators/auth.validator'
 import {
   loginService,
   logoutService,
   getMeService,
   refreshTokenService,
-  getNotificationsService,
-  markNotificationAsReadService,
-  markAllNotificationsAsReadService,
-  clearAllNotificationsService,
   verifyTotpLoginService,
   setupTotpService,
   enableTotpService,
@@ -24,7 +21,12 @@ import {
   updatePasskeyService,
   deletePasskeyService,
 } from '../services/passkey.service'
+import { updateEmployeePhotoService } from '../services/employee.service'
+import { saveUploadedFile }           from '../utils/file'
+import { getUserByIdService }         from '../services/user.service'
 import { ok, err }         from '../utils/response'
+import { db }              from '../db'
+import { activityLog }     from '../db/schema'
 
 export default async function authRoutes(fastify: FastifyInstance) {
 
@@ -68,38 +70,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     return reply.code(200).send(ok(data))
   })
 
-  // GET /api/auth/notifications
-  fastify.get('/notifications', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const list = await getNotificationsService(request.user.sub)
-    return reply.code(200).send(ok(list))
-  })
 
-  // PUT /api/auth/notifications/:id/read
-  fastify.put('/notifications/:id/read', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const { id } = request.params as { id: string }
-    await markNotificationAsReadService(request.user.sub, id)
-    return reply.code(200).send(ok({ message: 'Notifikasi ditandai dibaca' }))
-  })
-
-  // PUT /api/auth/notifications/read-all
-  fastify.put('/notifications/read-all', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    await markAllNotificationsAsReadService(request.user.sub)
-    return reply.code(200).send(ok({ message: 'Semua notifikasi ditandai dibaca' }))
-  })
-
-  // PUT /api/auth/notifications/clear-all
-  fastify.put('/notifications/clear-all', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    await clearAllNotificationsService(request.user.sub)
-    return reply.code(200).send(ok({ message: 'Semua notifikasi dihapus' }))
-  })
 
   // ─── Passkey (WebAuthn) Endpoints ───────────────────────────────────────────
 
@@ -192,6 +163,37 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const { password } = request.body as { password?: string }
     const result = await disableTotpService(request.user.sub, password)
+    return reply.code(200).send(ok(result))
+  })
+
+  // POST /api/auth/me/photo — update foto profil sendiri (via linked employee)
+  fastify.post('/me/photo', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const user = await getUserByIdService(request.user.sub)
+    if (!user?.employeeId) {
+      return reply.code(400).send(err('Akun Anda tidak terhubung ke data karyawan. Hubungi administrator.'))
+    }
+
+    const file: MultipartFile | undefined = await request.file()
+    if (!file) {
+      return reply.code(400).send(err('File foto tidak ditemukan dalam request.'))
+    }
+
+    const filename = await saveUploadedFile(file, 'employees')
+    const result   = await updateEmployeePhotoService(user.employeeId, filename)
+
+    // Log activity
+    try {
+      await db.insert(activityLog).values({
+        userId: request.user.sub,
+        action: 'update_profile_photo',
+        details: 'Mengubah foto profil karyawan',
+      })
+    } catch (err) {
+      // Ignore logging error
+    }
+
     return reply.code(200).send(ok(result))
   })
 }

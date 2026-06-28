@@ -2,9 +2,7 @@
 import 'dotenv/config'
 import { drizzle }              from 'drizzle-orm/postgres-js'
 import postgres                  from 'postgres'
-import { eq, and }               from 'drizzle-orm'
-import bcrypt                    from 'bcryptjs'
-import crypto                    from 'crypto'
+import { eq }                    from 'drizzle-orm'
 import {
   refStatusKaryawan,
   refPendidikan,
@@ -18,6 +16,7 @@ import {
   aplikasi,
   appUserAccess,
   ssoToken,
+  activityLog,
 } from './schema'
 
 const client = postgres({
@@ -34,148 +33,141 @@ const db = drizzle(client)
 async function seed() {
   console.log('🌱  Seeding database...\n')
 
+  // Clear existing tables in correct order to avoid foreign key violations
+  console.log('   → Clearing existing data...')
+  await db.delete(activityLog)
+  await db.delete(ssoToken)
+  await db.delete(appUserAccess)
+  await db.delete(user)
+  await db.delete(employee)
+  await db.delete(unitOrganisasi)
+  await db.delete(aplikasi)
+  await db.delete(refStatusKaryawan)
+  await db.delete(refPendidikan)
+  await db.delete(refStatusPernikahan)
+  await db.delete(refGrade)
+  await db.delete(refTipeUnit)
+  await db.delete(refPenempatanArea)
+  console.log('   ✅ Clean slate ready\n')
+
   // ── Ref Status Karyawan ────────────────────────────────────────────────────
   console.log('   → ref_status_karyawan')
   const statusKaryawanData = [
-    { kode: 'TETAP',    label: 'Karyawan Tetap' },
-    { kode: 'KONTRAK',  label: 'Karyawan Kontrak' },
-    { kode: 'MAGANG',   label: 'Magang / PKL' },
-    { kode: 'OUTSOURCE',label: 'Outsource' },
+    { id: '4345a076-dda0-4120-825c-03e841d30cdf', kode: 'TETAP',    label: 'Karyawan Tetap' },
+    { id: '2a4fcf67-9335-4337-b578-902b5d1e6641', kode: 'KONTRAK',  label: 'Karyawan Kontrak' },
+    { id: '9bcc4704-599b-40d9-ba98-1e7cf82491a1', kode: 'MAGANG',   label: 'Magang / PKL' },
+    { id: '077b047f-4dec-473a-82f6-4704195c9788', kode: 'OUTSOURCE',label: 'Outsource' },
+    { id: '534477f6-8f9c-48a6-bf56-7c8c6635091c', kode: 'DFLO',     label: 'Karyawan Dalam Masa' },
   ]
   for (const data of statusKaryawanData) {
     await db.insert(refStatusKaryawan).values(data).onConflictDoNothing()
   }
 
-  const statusKaryawanRows = await db.select().from(refStatusKaryawan)
-  const statusKaryawanMap = new Map(statusKaryawanRows.map(r => [r.kode, r.id]))
-
   // ── Ref Pendidikan ─────────────────────────────────────────────────────────
   console.log('   → ref_pendidikan')
   const pendidikanData = [
-    { kode: 'SD',    label: 'SD',                        urutan: 1 },
-    { kode: 'SMP',   label: 'SMP',                       urutan: 2 },
-    { kode: 'SMA',   label: 'SMA / SMK / Sederajat',     urutan: 3 },
-    { kode: 'D1',    label: 'Diploma I (D1)',             urutan: 4 },
-    { kode: 'D2',    label: 'Diploma II (D2)',            urutan: 5 },
-    { kode: 'D3',    label: 'Diploma III (D3)',           urutan: 6 },
-    { kode: 'D4',    label: 'Diploma IV (D4)',            urutan: 7 },
-    { kode: 'S1',    label: 'Sarjana (S1)',               urutan: 8 },
-    { kode: 'S2',    label: 'Magister (S2)',              urutan: 9 },
-    { kode: 'S3',    label: 'Doktor (S3)',                urutan: 10 },
+    { id: '2c76f8f6-02e9-4c70-ad81-eb42c49336fe', kode: 'SD',    label: 'SD',                        urutan: 1 },
+    { id: '7da92c56-e7d2-422e-bcd4-e2aa3ac583ec', kode: 'SMP',   label: 'SMP',                       urutan: 2 },
+    { id: '71720f63-e7df-4ad1-a6ca-91940fa042f9', kode: 'SMA',   label: 'SMA / SMK / Sederajat',     urutan: 3 },
+    { id: '68d5d09f-4c2a-45a4-8deb-44309bb66ae7', kode: 'D1',    label: 'Diploma I (D1)',             urutan: 4 },
+    { id: 'f22ea169-56a1-4378-aee4-37632c99846e', kode: 'D2',    label: 'Diploma II (D2)',            urutan: 5 },
+    { id: 'e58d8128-fb4f-4b34-a421-74ee354e2f25', kode: 'D3',    label: 'Diploma III (D3)',           urutan: 6 },
+    { id: 'c2121010-9cdd-4c10-8aeb-273200668855', kode: 'D4',    label: 'Diploma IV (D4)',            urutan: 7 },
+    { id: '7ac99029-3162-4399-b289-74f9b86ed391', kode: 'S1',    label: 'Sarjana (S1)',               urutan: 8 },
+    { id: 'b9134c4a-66ac-4bf6-804f-ca793cc1c55c', kode: 'S2',    label: 'Magister (S2)',              urutan: 9 },
+    { id: '76638846-8f34-45f2-929f-ec5b807e61ae', kode: 'S3',    label: 'Doktor (S3)',                urutan: 10 },
+    { id: 'ba2f59c6-7535-463e-9333-4f6da4b7c245', kode: 'TK',    label: 'Taman Kanak Kanaks',        urutan: 11 },
   ]
   for (const data of pendidikanData) {
     await db.insert(refPendidikan).values(data).onConflictDoNothing()
   }
 
-  const pendidikanRows = await db.select().from(refPendidikan)
-  const pendidikanMap = new Map(pendidikanRows.map(r => [r.kode, r.id]))
-
   // ── Ref Status Pernikahan ──────────────────────────────────────────────────
   console.log('   → ref_status_pernikahan')
   const statusPernikahanData = [
-    { kode: 'BELUM_NIKAH', label: 'Belum Menikah' },
-    { kode: 'MENIKAH',     label: 'Menikah' },
-    { kode: 'CERAI',       label: 'Cerai' },
+    { id: '928affb8-687a-4d46-91c5-45fdf2512ea8', kode: 'BELUM_NIKAH', label: 'Belum Menikah' },
+    { id: '8324ee8e-cc67-42b0-8910-4f7377cf50c1', kode: 'MENIKAH',     label: 'Menikah' },
+    { id: '24ef60ef-1c48-404d-8372-8517191d4bb5', kode: 'CERAI',       label: 'Cerai' },
+    { id: 'ead0bcbc-9a76-46a2-adfe-10df959be0e2', kode: 'TIDAK_MENIKAH', label: 'Tidak Menikah' },
   ]
   for (const data of statusPernikahanData) {
     await db.insert(refStatusPernikahan).values(data).onConflictDoNothing()
   }
 
-  const statusPernikahanRows = await db.select().from(refStatusPernikahan)
-  const statusPernikahanMap = new Map(statusPernikahanRows.map(r => [r.kode, r.id]))
-
   // ── Ref Grade ──────────────────────────────────────────────────────────────
   console.log('   → ref_grade')
   const gradeData = [
-    { kode: 'BOD',   label: 'Board of Director',     level: 20,  keterangan: 'Direksi Utama / Komisaris' },
-    { kode: 'BOM',   label: 'Board of Management',   level: 10,  keterangan: 'Senior Executive Vice President' },
-    { kode: 'BOM-1', label: 'Manager',               level: 9,  keterangan: 'Kepala Bagian' },
-    { kode: 'BOM-2', label: 'Asst. Manager',         level: 8,  keterangan: 'Kepala Sub Bagian' },
-    { kode: 'BOM-3', label: 'Supervisor',             level: 7,  keterangan: 'Supervisor / Kepala Seksi' },
-    { kode: 'BOM-4', label: 'Senior Staff',           level: 6,  keterangan: 'Staff Senior' },
-    { kode: 'STAFF', label: 'Staff',                 level: 5,  keterangan: 'Staff Operasional / Pelaksana' },
-    { kode: 'OPERATOR', label: 'Operator',           level: 4,  keterangan: 'Operator Pabrik / Teknikal' },
-    { kode: 'JUNIOR-STAFF', label: 'Junior Staff',   level: 3,  keterangan: 'Staff Magang / Junior' },
+    { id: '8384b160-711f-43f9-97b7-647beae89137', kode: 'BOM-4',   label: 'Senior Staff',         level: 6,  keterangan: 'Staff Senior' },
+    { id: '28924a99-6921-4773-b34d-55de2d72cea3', kode: 'BOD',     label: 'Board of Director',     level: 20, keterangan: 'Direktur' },
+    { id: 'ce2c1d4d-ff2e-49c5-8f72-3625fa7bb6b7', kode: 'BOM',     label: 'Board of Management',   level: 10, keterangan: 'SEVP' },
+    { id: '944de528-71cc-4c40-a946-4256d37d16f0', kode: 'BOM-1',   label: 'Manager',               level: 9,  keterangan: 'Kepala Bagian' },
+    { id: '711cbb4a-938d-4405-ad08-cd19d80e0cce', kode: 'BOM-2',   label: 'Asst. Manager',         level: 8,  keterangan: 'Kepala Sub Bagian' },
+    { id: 'c9dc4f45-3b5f-428c-a9dc-acdfe961a13f', kode: 'BOM-3',   label: 'Supervisor',             level: 7,  keterangan: 'Supervisor / Kepala Seksi' },
+    { id: '69ed633e-3a10-4806-b0bb-69012c2759c4', kode: 'PKL',     label: 'PKL',                   level: 5,  keterangan: 'Praktek Kerja Lapangan' },
+    { id: '96129fd5-b09b-469f-a25c-aeda0b9ce10b', kode: '3A',      label: 'Staff III-A',           level: 7,  keterangan: 'Staff' },
+    { id: '2cb911b1-9cba-4876-b042-9d35be7238cd', kode: '3B',      label: 'Staff III-B',           level: 8,  keterangan: 'Staff' },
+    { id: 'cc6b7d39-8627-419c-9d99-067bd630c1c0', kode: '2A',      label: 'Staff II-A',           level: 9,  keterangan: 'Staff Junior' },
+    { id: 'ca465724-dac2-4952-a512-a7fca5b3c7f7', kode: '2B',      label: 'Staff II-B',           level: 10, keterangan: 'Staff Junior' },
+    { id: 'c80a4328-c985-4690-980b-2313b609a336', kode: '1A',      label: 'Staff I-A',             level: 11, keterangan: 'Staff Pemula' },
+    { id: '2050d523-889f-4e9a-a85f-59194ff3176f', kode: '1B',      label: 'Staff I-B',             level: 12, keterangan: 'Staff Pemula' },
   ]
   for (const data of gradeData) {
     await db.insert(refGrade).values(data).onConflictDoNothing()
   }
 
-  const gradeRows = await db.select().from(refGrade)
-  const gradeMap = new Map(gradeRows.map(r => [r.kode, r.id]))
-
   // ── Ref Tipe Unit ──────────────────────────────────────────────────────────
   console.log('   → ref_tipe_unit')
   const tipeUnitData = [
-    { kode: 'direktorat', label: 'Direktorat', level: 5, warna: '#8b5cf6' },
-    { kode: 'sevp',       label: 'SEVP',       level: 4, warna: '#3b82f6' },
-    { kode: 'bagian',     label: 'Bagian',     level: 3, warna: '#10b981' },
-    { kode: 'sub_bagian', label: 'Sub Bagian', level: 2, warna: '#f59e0b' },
-    { kode: 'seksi',      label: 'Seksi',      level: 1, warna: '#ec4899' },
+    { id: 'b7051c21-69d0-4f35-ae82-cd2251191436', kode: 'direktorat', label: 'Direktorat', level: 5, warna: '#f59e0b' },
+    { id: 'eee00912-4a6a-43f4-9ae6-16e0b2bcd59e', kode: 'sevp',       label: 'SEVP',       level: 4, warna: '#6366f1' },
+    { id: '28b09266-ef42-4cd1-88f6-2eff011efcc5', kode: 'bagian',     label: 'Bagian',     level: 3, warna: '#10b981' },
+    { id: '0e46c3da-562c-4f0d-99ed-83600378811c', kode: 'sub_bagian', label: 'Sub Bagian', level: 2, warna: '#3b82f6' },
+    { id: 'f9819d41-2a4d-412c-b07e-d9f40dbba8ef', kode: 'seksi',      label: 'Seksi',      level: 1, warna: '#ec4899' },
   ]
   for (const data of tipeUnitData) {
     await db.insert(refTipeUnit).values(data).onConflictDoNothing()
   }
 
-  const tipeUnitRows = await db.select().from(refTipeUnit)
-  const tipeUnitMap = new Map(tipeUnitRows.map(r => [r.kode, r.id]))
-
   // ── Ref Penempatan Area ────────────────────────────────────────────────────
   console.log('   → ref_penempatan_area')
   const penempatanAreaData = [
-    { nama: 'PKS Sei Mangkei', longitude: '99.3732', latitude: '3.1972' },
-    { nama: 'Kantor Direksi Medan', longitude: '98.6782', latitude: '3.5852' },
-    { nama: 'Gudang Logistik Kuala Tanjung', longitude: '99.4445', latitude: '3.3855' },
-    { nama: 'Pabrik Minyak Goreng Sei Mangkei', longitude: '99.3750', latitude: '3.1980' },
-    { nama: 'Kawasan Industri Sei Mangkei', longitude: '99.3710', latitude: '3.1950' },
+    { id: 'e39ae5ed-9965-44f4-8d42-3b05682a6f1b', nama: 'PKS Sei Mangkei', longitude: '99.3732', latitude: '3.1972' },
+    { id: 'ca59ec54-880a-4e1f-b53b-c07d2ddbca60', nama: 'Kantor Direksi Medan', longitude: '98.6782', latitude: '3.5852' },
+    { id: 'b75182a4-4a79-4789-8641-c3989c363bd0', nama: 'Gudang Logistik Kuala Tanjung', longitude: '99.4445', latitude: '3.3855' },
   ]
   for (const data of penempatanAreaData) {
     await db.insert(refPenempatanArea).values(data).onConflictDoNothing()
   }
 
-  const penempatanAreaRows = await db.select().from(refPenempatanArea)
-  const penempatanAreaMap = new Map(penempatanAreaRows.map(r => [r.nama, r.id]))
-
   // ── Unit Organisasi ────────────────────────────────────────────────────────
   console.log('   → unit_organisasi')
   const unitData = [
-    // Level 1 (Root)
-    { kode: 'DIRUT', nama: 'Direktorat Utama', tipe: 'direktorat' as const, parent: null },
-    // Level 2 (SEVP)
-    { kode: 'SEVP-OPS', nama: 'SEVP Operasional', tipe: 'sevp' as const, parent: 'DIRUT' },
-    { kode: 'SEVP-CORP', nama: 'SEVP Korporat & Keuangan', tipe: 'sevp' as const, parent: 'DIRUT' },
-    // Level 3 (Bagian under SEVP-OPS)
-    { kode: 'BAG-PROD', nama: 'Bagian Produksi & Pabrik', tipe: 'bagian' as const, parent: 'SEVP-OPS' },
-    { kode: 'BAG-MAINT', nama: 'Bagian Pemeliharaan & Maintenance', tipe: 'bagian' as const, parent: 'SEVP-OPS' },
-    // Level 3 (Bagian under SEVP-CORP)
-    { kode: 'BAG-FIN', nama: 'Bagian Keuangan & Akuntansi', tipe: 'bagian' as const, parent: 'SEVP-CORP' },
-    { kode: 'BAG-HR', nama: 'Bagian SDM & Umum', tipe: 'bagian' as const, parent: 'SEVP-CORP' },
-    { kode: 'BAG-IT', nama: 'Bagian Teknologi Informasi', tipe: 'bagian' as const, parent: 'SEVP-CORP' },
-    // Level 4 (Sub-Bagian under BAG-PROD)
-    { kode: 'SUBBAG-FRAC', nama: 'Sub-Bagian Fractionation & Refining', tipe: 'sub_bagian' as const, parent: 'BAG-PROD' },
-    { kode: 'SUBBAG-PACK', nama: 'Sub-Bagian Packaging / Pengemasan', tipe: 'sub_bagian' as const, parent: 'BAG-PROD' },
-    // Level 4 (Sub-Bagian under BAG-MAINT)
-    { kode: 'SUBBAG-MECH', nama: 'Sub-Bagian Mekanikal & Fabrikasi', tipe: 'sub_bagian' as const, parent: 'BAG-MAINT' },
-    { kode: 'SUBBAG-ELEC', nama: 'Sub-Bagian Elektrikal & Instrumentasi', tipe: 'sub_bagian' as const, parent: 'BAG-MAINT' },
-    // Level 4 (Sub-Bagian under BAG-FIN)
-    { kode: 'SUBBAG-TAX', nama: 'Sub-Bagian Perpajakan & Kas', tipe: 'sub_bagian' as const, parent: 'BAG-FIN' },
-    // Level 4 (Sub-Bagian under BAG-HR)
-    { kode: 'SUBBAG-RECRUIT', nama: 'Sub-Bagian Rekrutmen & Pelatihan', tipe: 'sub_bagian' as const, parent: 'BAG-HR' },
-    { kode: 'SUBBAG-GA', nama: 'Sub-Bagian General Affairs & Rumah Tangga', tipe: 'sub_bagian' as const, parent: 'BAG-HR' },
-    // Level 4 (Sub-Bagian under BAG-IT)
-    { kode: 'SUBBAG-NET', nama: 'Sub-Bagian Network & Infrastructure', tipe: 'sub_bagian' as const, parent: 'BAG-IT' },
-    { kode: 'SUBBAG-APP', nama: 'Sub-Bagian Application Development', tipe: 'sub_bagian' as const, parent: 'BAG-IT' },
-    // Level 5 (Seksi under Sub-Bagian)
-    { kode: 'SEK-REF-OPS', nama: 'Seksi Refining Operation', tipe: 'seksi' as const, parent: 'SUBBAG-FRAC' },
-    { kode: 'SEK-FRAC-OPS', nama: 'Seksi Fractionation Operation', tipe: 'seksi' as const, parent: 'SUBBAG-FRAC' },
-    { kode: 'SEK-PACK-LINE', nama: 'Seksi Packing Line', tipe: 'seksi' as const, parent: 'SUBBAG-PACK' },
-    { kode: 'SEK-FAB', nama: 'Seksi Fabrikasi & Workshop', tipe: 'seksi' as const, parent: 'SUBBAG-MECH' },
-    { kode: 'SEK-INST', nama: 'Seksi Instrumentasi & Kalibrasi', tipe: 'seksi' as const, parent: 'SUBBAG-ELEC' },
-    { kode: 'SEK-HELP', nama: 'Seksi Helpdesk & Support', tipe: 'seksi' as const, parent: 'SUBBAG-NET' },
-    { kode: 'SEK-DEV', nama: 'Seksi Software Development & QA', tipe: 'seksi' as const, parent: 'SUBBAG-APP' },
+    { id: 'e3eb44c1-ad1d-4a50-8254-299499f52084', nama: 'Direktur Utama', kode: 'DIRUT', tipe: 'direktorat' as const, parentId: null },
+    { id: '7eb2cb37-57db-48ad-835e-eb734a834e24', nama: 'SEVP Business Support', kode: 'SEVPBS', tipe: 'sevp' as const, parentId: 'e3eb44c1-ad1d-4a50-8254-299499f52084' },
+    { id: 'e371a958-c8e0-4077-9c6e-71fd46d5b249', nama: 'SEVP Operation', kode: 'SEVPO', tipe: 'sevp' as const, parentId: 'e3eb44c1-ad1d-4a50-8254-299499f52084' },
+    { id: 'b4b93737-035e-443c-ba27-12e0a1b49138', nama: 'Sistem & IT', kode: 'SIH', tipe: 'sub_bagian' as const, parentId: '428b2964-4bb2-4f95-baa7-f78c86c22411' },
+    { id: '428b2964-4bb2-4f95-baa7-f78c86c22411', nama: 'SDM & SISTEM', kode: 'SB_SIT', tipe: 'bagian' as const, parentId: '7eb2cb37-57db-48ad-835e-eb734a834e24' },
+    { id: '656cf00b-f705-4333-8b85-6d418dcae199', nama: 'MANAJEMEN RISIKO', kode: 'RM', tipe: 'bagian' as const, parentId: 'e3eb44c1-ad1d-4a50-8254-299499f52084' },
+    { id: '645f087a-ee8e-4366-9dcb-2bf0d6c0acf0', nama: 'SPI', kode: 'SPI', tipe: 'bagian' as const, parentId: 'e3eb44c1-ad1d-4a50-8254-299499f52084' },
+    { id: '4b24e016-8082-4c1b-8c89-60544cb4d8a6', nama: 'Sekretariat Perusahaan', kode: 'SPE', tipe: 'sub_bagian' as const, parentId: 'e3eb44c1-ad1d-4a50-8254-299499f52084' },
+    { id: 'ffd12d59-bd95-40e2-a2b8-9fc55145dc1b', nama: 'Pengadaan', kode: 'PND', tipe: 'sub_bagian' as const, parentId: '7eb2cb37-57db-48ad-835e-eb734a834e24' },
+    { id: '665734c9-7feb-4775-9134-a2017277a185', nama: 'Keuangan & Akuntansi', kode: 'KUAK', tipe: 'bagian' as const, parentId: '7eb2cb37-57db-48ad-835e-eb734a834e24' },
+    { id: 'dccf0d20-930a-44e2-931d-0ae811558806', nama: 'Produksi', kode: 'MPR', tipe: 'bagian' as const, parentId: 'e371a958-c8e0-4077-9c6e-71fd46d5b249' },
+    { id: '9d577b6e-8216-4a92-80f7-cb95e8b65c11', nama: 'Supply Chain Management', kode: 'SCM', tipe: 'bagian' as const, parentId: 'e371a958-c8e0-4077-9c6e-71fd46d5b249' },
+    { id: 'e99e6ad8-6897-4b5a-bf2a-903f687f7daa', nama: 'Enginering', kode: 'EM', tipe: 'bagian' as const, parentId: 'e371a958-c8e0-4077-9c6e-71fd46d5b249' },
+    { id: '56fb2470-b30c-406b-bffa-c1b4be9e2643', nama: 'Quality Assurance & Control', kode: 'QACR', tipe: 'sub_bagian' as const, parentId: 'e371a958-c8e0-4077-9c6e-71fd46d5b249' },
+    { id: '03079178-5279-4443-bde3-cef8b5fe79c5', nama: 'Business Product ', kode: 'JMBP', tipe: 'sub_bagian' as const, parentId: 'e371a958-c8e0-4077-9c6e-71fd46d5b249' },
+    { id: '9f582ec1-6dea-4fc4-8dfe-6475c42d245d', nama: 'Marketing & Sales', kode: 'MS', tipe: 'bagian' as const, parentId: 'e3eb44c1-ad1d-4a50-8254-299499f52084' },
+    { id: '234508a8-2b07-4885-ad29-7202c119fd1f', nama: 'Health Safety Security Environtment', kode: 'HSSE', tipe: 'seksi' as const, parentId: 'b4b93737-035e-443c-ba27-12e0a1b49138' },
+    { id: '55a98475-bcd3-4c02-b931-2eea08fbe0ec', nama: 'Sdm & Umum', kode: 'SUM', tipe: 'sub_bagian' as const, parentId: '428b2964-4bb2-4f95-baa7-f78c86c22411' },
+    { id: 'f29a9427-d6b6-4b23-8a6c-5cdf84e08024', nama: 'Legal', kode: 'LG', tipe: 'sub_bagian' as const, parentId: '428b2964-4bb2-4f95-baa7-f78c86c22411' },
+    { id: '6c16ea15-648c-4a5a-b298-04b208cf2722', nama: 'Manager Sourcing CPO', kode: 'MSC', tipe: 'bagian' as const, parentId: 'e3eb44c1-ad1d-4a50-8254-299499f52084' },
+    { id: 'e3ff63c3-c05f-4dd7-8d91-c26be4337727', nama: 'IT', kode: 'IT', tipe: 'seksi' as const, parentId: 'b4b93737-035e-443c-ba27-12e0a1b49138' },
   ]
+
   for (const u of unitData) {
     await db.insert(unitOrganisasi).values({
+      id: u.id,
       kode: u.kode,
       nama: u.nama,
       tipe: u.tipe,
@@ -183,309 +175,505 @@ async function seed() {
     }).onConflictDoNothing()
   }
 
-  const allUnits = await db.select().from(unitOrganisasi)
-  const unitMap = new Map(allUnits.map(u => [u.kode, u.id]))
-
   // Connect parent-child hierarchies
   for (const u of unitData) {
-    if (u.parent) {
-      const childId = unitMap.get(u.kode)
-      const parentId = unitMap.get(u.parent)
-      if (childId && parentId) {
-        await db.update(unitOrganisasi).set({ parentId }).where(eq(unitOrganisasi.id, childId))
-      }
+    if (u.parentId) {
+      await db.update(unitOrganisasi).set({ parentId: u.parentId }).where(eq(unitOrganisasi.id, u.id))
     }
   }
 
-  // ── Employees & Users mock lists (Exactly 40 entries) ──────────────────────
-  console.log('   → employees & users (40 sets)')
-
-  // Pre-hash common password to ensure fast execution
-  const commonPasswordHash = await bcrypt.hash('User@123', 10)
-
-  const rawEmployees = [
-    // Directors & SEVPs
-    { nrk: 'NRK-001', nik: '3201011505950001', nama: 'Budi Santoso, S.T.', jk: 'L', jab: 'IT Administrator', grade: 'BOM-4', unit: 'SUBBAG-APP', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'admin@inl.co.id', role: 'super_admin', active: true },
-    { nrk: 'NRK-002', nik: '3201011505950002', nama: 'Ir. H. Ahmad Fauzi', jk: 'L', jab: 'Direktur Utama', grade: 'BOD', unit: 'DIRUT', st: 'TETAP', pd: 'S2', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'ahmad.fauzi@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-003', nik: '3201011505950003', nama: 'Bambang Wijaya, M.M.', jk: 'L', jab: 'SEVP Operasional', grade: 'BOM', unit: 'SEVP-OPS', st: 'TETAP', pd: 'S2', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'bambang.wijaya@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-004', nik: '3201011505950004', nama: 'Riana Kartika, M.B.A.', jk: 'P', jab: 'SEVP Korporat & Keuangan', grade: 'BOM', unit: 'SEVP-CORP', st: 'TETAP', pd: 'S2', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'riana.kartika@inl.co.id', role: 'user', active: true },
-    
-    // Managers (BOM-1)
-    { nrk: 'NRK-005', nik: '3201011505950005', nama: 'Dedi Kusnadi, S.T.', jk: 'L', jab: 'Manager Produksi & Pabrik', grade: 'BOM-1', unit: 'BAG-PROD', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'dedi.kusnadi@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-006', nik: '3201011505950006', nama: 'Eko Prasetyo, S.T.', jk: 'L', jab: 'Manager Pemeliharaan', grade: 'BOM-1', unit: 'BAG-MAINT', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'eko.prasetyo@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-007', nik: '3201011505950007', nama: 'Fitri Handayani, S.E.', jk: 'P', jab: 'Manager Keuangan', grade: 'BOM-1', unit: 'BAG-FIN', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'fitri.handayani@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-008', nik: '3201011505950008', nama: 'Gita Lestari, S.Psi.', jk: 'P', jab: 'Manager SDM & Umum', grade: 'BOM-1', unit: 'BAG-HR', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'gita.lestari@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-009', nik: '3201011505950009', nama: 'Hendra Wijaya, S.Kom.', jk: 'L', jab: 'Manager IT', grade: 'BOM-1', unit: 'BAG-IT', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'hendra.wijaya@inl.co.id', role: 'user', active: true },
-
-    // Asst. Managers (BOM-2)
-    { nrk: 'NRK-010', nik: '3201011505950010', nama: 'Indra Gunawan, S.T.', jk: 'L', jab: 'Asst. Manager Fractionation', grade: 'BOM-2', unit: 'SUBBAG-FRAC', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'indra.gunawan@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-011', nik: '3201011505950011', nama: 'Joko Susilo, S.T.', jk: 'L', jab: 'Asst. Manager Packaging', grade: 'BOM-2', unit: 'SUBBAG-PACK', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'joko.susilo@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-012', nik: '3201011505950012', nama: 'Kurniawan, S.T.', jk: 'L', jab: 'Asst. Manager Mekanikal', grade: 'BOM-2', unit: 'SUBBAG-MECH', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'kurniawan@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-013', nik: '3201011505950013', nama: 'Lestari Ningsih, S.T.', jk: 'P', jab: 'Asst. Manager Elektrikal', grade: 'BOM-2', unit: 'SUBBAG-ELEC', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'lestari.ningsih@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-014', nik: '3201011505950014', nama: 'Muhammad Rizky, S.E.', jk: 'L', jab: 'Asst. Manager Perpajakan', grade: 'BOM-2', unit: 'SUBBAG-TAX', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'muhammad.rizky@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-015', nik: '3201011505950015', nama: 'Novianti, S.Psi.', jk: 'P', jab: 'Asst. Manager Rekrutmen', grade: 'BOM-2', unit: 'SUBBAG-RECRUIT', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'novianti@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-016', nik: '3201011505950016', nama: 'Oki Setiawan, S.T.', jk: 'L', jab: 'Asst. Manager GA & Logistik', grade: 'BOM-2', unit: 'SUBBAG-GA', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Gudang Logistik Kuala Tanjung', email: 'oki.setiawan@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-017', nik: '3201011505950017', nama: 'Pratiwi Wulandari, S.T.', jk: 'P', jab: 'Asst. Manager Network', grade: 'BOM-2', unit: 'SUBBAG-NET', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'pratiwi.w@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-018', nik: '3201011505950018', nama: 'Qori Amalia, S.Kom.', jk: 'P', jab: 'Asst. Manager App Dev', grade: 'BOM-2', unit: 'SUBBAG-APP', st: 'TETAP', pd: 'S1', nk: 'MENIKAH', area: 'Kantor Direksi Medan', email: 'qori.amalia@inl.co.id', role: 'user', active: true },
-
-    // Supervisors & Staff (BOM-3, BOM-4, STAFF, OPERATOR)
-    { nrk: 'NRK-019', nik: '3201011505950019', nama: 'Rudi Hermawan', jk: 'L', jab: 'Supervisor Fractionation', grade: 'BOM-3', unit: 'SEK-FRAC-OPS', st: 'TETAP', pd: 'D3', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'rudi.hermawan@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-020', nik: '3201011505950020', nama: 'Siti Aminah', jk: 'P', jab: 'Supervisor Packaging', grade: 'BOM-3', unit: 'SEK-PACK-LINE', st: 'TETAP', pd: 'D3', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'siti.aminah@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-021', nik: '3201011505950021', nama: 'Triyono Sakti', jk: 'L', jab: 'Supervisor Mekanikal', grade: 'BOM-3', unit: 'SEK-FAB', st: 'TETAP', pd: 'D3', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'triyono.s@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-022', nik: '3201011505950022', nama: 'Utomo Wijoyo', jk: 'L', jab: 'Supervisor Elektrikal', grade: 'BOM-3', unit: 'SEK-INST', st: 'TETAP', pd: 'D3', nk: 'MENIKAH', area: 'PKS Sei Mangkei', email: 'utomo.w@inl.co.id', role: 'user', active: true },
-    
-    { nrk: 'NRK-023', nik: '3201011505950023', nama: 'Vivi Alfianti, A.Md.', jk: 'P', jab: 'Staff Pajak', grade: 'STAFF', unit: 'SUBBAG-TAX', st: 'KONTRAK', pd: 'D3', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'vivi.alfianti@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-024', nik: '3201011505950024', nama: 'Wahyu Hidayat, S.H.', jk: 'L', jab: 'Staff Recruitment', grade: 'STAFF', unit: 'SUBBAG-RECRUIT', st: 'KONTRAK', pd: 'S1', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'wahyu.h@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-025', nik: '3201011505950025', nama: 'Yuni Lestari, S.E.', jk: 'P', jab: 'Staff General Affairs', grade: 'STAFF', unit: 'SUBBAG-GA', st: 'KONTRAK', pd: 'S1', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'yuni.l@inl.co.id', role: 'user', active: false }, // Suspended 1
-    { nrk: 'NRK-026', nik: '3201011505950026', nama: 'Zulkifli Lubis, S.T.', jk: 'L', jab: 'Staff Network Infra', grade: 'STAFF', unit: 'SEK-HELP', st: 'KONTRAK', pd: 'S1', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'zulkifli.l@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-027', nik: '3201011505950027', nama: 'Ade Putra, S.Kom.', jk: 'L', jab: 'Junior Developer', grade: 'JUNIOR-STAFF', unit: 'SEK-DEV', st: 'KONTRAK', pd: 'S1', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'ade.putra@inl.co.id', role: 'user', active: true },
-    
-    { nrk: 'NRK-028', nik: '3201011505950028', nama: 'Bayu Pratama', jk: 'L', jab: 'Operator Fractionation A', grade: 'OPERATOR', unit: 'SUBBAG-FRAC', st: 'KONTRAK', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'PKS Sei Mangkei', email: 'bayu.p@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-029', nik: '3201011505950029', nama: 'Candra Buana', jk: 'L', jab: 'Operator Fractionation B', grade: 'OPERATOR', unit: 'SUBBAG-FRAC', st: 'KONTRAK', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'PKS Sei Mangkei', email: 'candra.b@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-030', nik: '3201011505950030', nama: 'Dewi Sartika', jk: 'P', jab: 'Operator Packing Line 1', grade: 'OPERATOR', unit: 'SUBBAG-PACK', st: 'KONTRAK', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'PKS Sei Mangkei', email: 'dewi.s@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-031', nik: '3201011505950031', nama: 'Erwin Syahputra', jk: 'L', jab: 'Operator Packing Line 2', grade: 'OPERATOR', unit: 'SUBBAG-PACK', st: 'KONTRAK', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'PKS Sei Mangkei', email: 'erwin.s@inl.co.id', role: 'user', active: false }, // Suspended 2
-    { nrk: 'NRK-032', nik: '3201011505950032', nama: 'Fajar Nugroho', jk: 'L', jab: 'Operator Mekanik Boiler', grade: 'OPERATOR', unit: 'SUBBAG-MECH', st: 'KONTRAK', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'Pabrik Minyak Goreng Sei Mangkei', email: 'fajar.n@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-033', nik: '3201011505950033', nama: 'Guntur Pamungkas', jk: 'L', jab: 'Operator Mekanik Turbine', grade: 'OPERATOR', unit: 'SUBBAG-MECH', st: 'KONTRAK', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'PKS Sei Mangkei', email: 'guntur.p@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-034', nik: '3201011505950034', nama: 'Hani Susilowati', jk: 'P', jab: 'Operator Panel Kontrol', grade: 'OPERATOR', unit: 'SUBBAG-ELEC', st: 'KONTRAK', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'PKS Sei Mangkei', email: 'hani.s@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-035', nik: '3201011505950035', nama: 'Irfan Hakim', jk: 'L', jab: 'Operator Instrumentasi', grade: 'OPERATOR', unit: 'SUBBAG-ELEC', st: 'KONTRAK', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'Pabrik Minyak Goreng Sei Mangkei', email: 'irfan.h@inl.co.id', role: 'user', active: true },
-    
-    // Trainees, Outsource & Admins (MAGANG, OUTSOURCE)
-    { nrk: 'NRK-036', nik: '3201011505950036', nama: 'Junaedi', jk: 'L', jab: 'Magang Support Network', grade: 'JUNIOR-STAFF', unit: 'SEK-HELP', st: 'MAGANG', pd: 'D3', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'junaedi@inl.co.id', role: 'user', active: false }, // Suspended 3
-    { nrk: 'NRK-037', nik: '3201011505950037', nama: 'Krisna Bayu', jk: 'L', jab: 'Magang HR Operations', grade: 'JUNIOR-STAFF', unit: 'SUBBAG-RECRUIT', st: 'MAGANG', pd: 'D3', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'krisna.b@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-038', nik: '3201011505950038', nama: 'Lisa Permatasari', jk: 'P', jab: 'Magang Finance Admin', grade: 'JUNIOR-STAFF', unit: 'SUBBAG-TAX', st: 'MAGANG', pd: 'D3', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'lisa.p@inl.co.id', role: 'user', active: false }, // Suspended 4
-    { nrk: 'NRK-039', nik: '3201011505950039', nama: 'Maman Budiman', jk: 'L', jab: 'Driver Direksi', grade: 'STAFF', unit: 'SUBBAG-GA', st: 'OUTSOURCE', pd: 'SMA', nk: 'CERAI', area: 'Kantor Direksi Medan', email: 'maman.b@inl.co.id', role: 'user', active: true },
-    { nrk: 'NRK-040', nik: '3201011505950040', nama: 'Nita Rahmawati', jk: 'P', jab: 'Resepsionis Kantor Medan', grade: 'STAFF', unit: 'SUBBAG-GA', st: 'OUTSOURCE', pd: 'SMA', nk: 'BELUM_NIKAH', area: 'Kantor Direksi Medan', email: 'nita.r@inl.co.id', role: 'user', active: true },
+  // ── Employees ──────────────────────────────────────────────────────────────
+  console.log('   → employees')
+  const employeeData = [
+    {
+      id: '2fd4e52c-9d02-422c-b687-bcd220dc83b6',
+      nrk: 'NRK-12132142131',
+      nik: '1231288979898442',
+      nama: 'Oka Aritonang',
+      jenisKelamin: 'L',
+      jabatan: 'Admin HSSE',
+      gradeId: '944de528-71cc-4c40-a946-4256d37d16f0',
+      atasanId: null,
+      unitOrganisasiId: 'b4b93737-035e-443c-ba27-12e0a1b49138',
+      tanggalMasuk: '2026-06-30',
+      tempatLahir: 'Medan',
+      tanggalLahir: '2026-05-31',
+      fotoProfil: '1782438704136_vsv7pr.png',
+      statusKaryawanId: '4345a076-dda0-4120-825c-03e841d30cdf',
+      pendidikanTerakhirId: '76638846-8f34-45f2-929f-ec5b807e61ae',
+      statusPernikahanId: '8324ee8e-cc67-42b0-8910-4f7377cf50c1',
+      nomorHp: '11111',
+      alamat: '22223',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: '1397517d-f78e-4827-b124-c6dc987103b9',
+      nrk: '11111111',
+      nik: '1111111111111111',
+      nama: 'Fitri Febriadi Turnip',
+      jenisKelamin: 'P',
+      jabatan: 'Pj. Asisten MR & HSSE',
+      gradeId: 'c9dc4f45-3b5f-428c-a9dc-acdfe961a13f',
+      atasanId: null,
+      unitOrganisasiId: '234508a8-2b07-4885-ad29-7202c119fd1f',
+      tanggalMasuk: '2026-06-26',
+      tempatLahir: 'Jakarta',
+      tanggalLahir: '2026-06-26',
+      fotoProfil: '1782440353080_c0iyfa.png',
+      statusKaryawanId: '4345a076-dda0-4120-825c-03e841d30cdf',
+      pendidikanTerakhirId: '76638846-8f34-45f2-929f-ec5b807e61ae',
+      statusPernikahanId: '928affb8-687a-4d46-91c5-45fdf2512ea8',
+      nomorHp: '0000000000000000000',
+      alamat: '00000000000000000000',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'f3e415ee-f7e3-4c21-99d8-2dd6bde057cd',
+      nrk: 'NRK-13872471823',
+      nik: '2394023478454312',
+      nama: 'Achmad Fadil',
+      jenisKelamin: 'L',
+      jabatan: 'IT Listrik',
+      gradeId: '8384b160-711f-43f9-97b7-647beae89137',
+      atasanId: null,
+      unitOrganisasiId: '428b2964-4bb2-4f95-baa7-f78c86c22411',
+      tanggalMasuk: '2026-06-15',
+      tempatLahir: 'Medan',
+      tanggalLahir: '1990-12-09',
+      fotoProfil: '1782432299181_28k3ko.png',
+      statusKaryawanId: '4345a076-dda0-4120-825c-03e841d30cdf',
+      pendidikanTerakhirId: 'ba2f59c6-7535-463e-9333-4f6da4b7c245',
+      statusPernikahanId: '928affb8-687a-4d46-91c5-45fdf2512ea8',
+      nomorHp: '0817283123531',
+      alamat: 'Batu Bara',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: '35fe5623-5369-4657-9788-80912576014b',
+      nrk: 'NRK-129918274391',
+      nik: '7847194687364781',
+      nama: 'Darwin',
+      jenisKelamin: 'L',
+      jabatan: 'IT Keuangan',
+      gradeId: '28924a99-6921-4773-b34d-55de2d72cea3',
+      atasanId: null,
+      unitOrganisasiId: 'e3eb44c1-ad1d-4a50-8254-299499f52084',
+      tanggalMasuk: '2026-06-13',
+      tempatLahir: 'Jakarta',
+      tanggalLahir: '1990-12-09',
+      fotoProfil: '1782432615569_mwpbtt.png',
+      statusKaryawanId: '2a4fcf67-9335-4337-b578-902b5d1e6641',
+      pendidikanTerakhirId: 'b9134c4a-66ac-4bf6-804f-ca793cc1c55c',
+      statusPernikahanId: '928affb8-687a-4d46-91c5-45fdf2512ea8',
+      nomorHp: '-',
+      alamat: '-',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'ec96fb22-0bc3-418d-a9ec-67fc10e3e52a',
+      nrk: '0127398719231',
+      nik: '2109047982174872',
+      nama: 'Zulianto',
+      jenisKelamin: 'L',
+      jabatan: 'Bisnis Support',
+      gradeId: '944de528-71cc-4c40-a946-4256d37d16f0',
+      atasanId: null,
+      unitOrganisasiId: '7eb2cb37-57db-48ad-835e-eb734a834e24',
+      tanggalMasuk: '2026-06-26',
+      tempatLahir: 'Medan',
+      tanggalLahir: '2026-06-26',
+      fotoProfil: null,
+      statusKaryawanId: '2a4fcf67-9335-4337-b578-902b5d1e6641',
+      pendidikanTerakhirId: '7ac99029-3162-4399-b289-74f9b86ed391',
+      statusPernikahanId: 'ead0bcbc-9a76-46a2-adfe-10df959be0e2',
+      nomorHp: 'a',
+      alamat: 'a',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: '45d81ecb-5357-41dc-8bb4-7d1e7aa7a1a9',
+      nrk: 'NRK-10389812378',
+      nik: '1982638712947981',
+      nama: 'Tommy Inri',
+      jenisKelamin: 'L',
+      jabatan: 'Asisten IT',
+      gradeId: 'c9dc4f45-3b5f-428c-a9dc-acdfe961a13f',
+      atasanId: null,
+      unitOrganisasiId: 'e3ff63c3-c05f-4dd7-8d91-c26be4337727',
+      tanggalMasuk: '2026-06-17',
+      tempatLahir: 'Batu Bara',
+      tanggalLahir: '2026-07-01',
+      fotoProfil: '1782439198277_25zppb.jpg',
+      statusKaryawanId: '9bcc4704-599b-40d9-ba98-1e7cf82491a1',
+      pendidikanTerakhirId: '7ac99029-3162-4399-b289-74f9b86ed391',
+      statusPernikahanId: '8324ee8e-cc67-42b0-8910-4f7377cf50c1',
+      nomorHp: '-',
+      alamat: '-',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'a21b8125-2118-4739-a78a-b74f344d3367',
+      nrk: 'NRK-2903719728391',
+      nik: '3238478198734321',
+      nama: 'Salman WIjaya S',
+      jenisKelamin: 'L',
+      jabatan: 'Admin Network & Data Center',
+      gradeId: '8384b160-711f-43f9-97b7-647beae89137',
+      atasanId: null,
+      unitOrganisasiId: 'e3ff63c3-c05f-4dd7-8d91-c26be4337727',
+      tanggalMasuk: '2026-06-04',
+      tempatLahir: 'Medan',
+      tanggalLahir: '1000-12-09',
+      fotoProfil: '1782439041856_km9n9a.webp',
+      statusKaryawanId: '9bcc4704-599b-40d9-ba98-1e7cf82491a1',
+      pendidikanTerakhirId: '7ac99029-3162-4399-b289-74f9b86ed391',
+      statusPernikahanId: '8324ee8e-cc67-42b0-8910-4f7377cf50c1',
+      nomorHp: '-',
+      alamat: '-',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'b6c1259e-3032-49c3-a9ca-becafb2d3d5c',
+      nrk: '193281234123',
+      nik: '1293941222222222',
+      nama: 'Aundry',
+      jenisKelamin: 'L',
+      jabatan: 'Admin Network & Data Center',
+      gradeId: '8384b160-711f-43f9-97b7-647beae89137',
+      atasanId: null,
+      unitOrganisasiId: 'e3ff63c3-c05f-4dd7-8d91-c26be4337727',
+      tanggalMasuk: '2026-06-26',
+      tempatLahir: 'Jakarta',
+      tanggalLahir: '2026-06-26',
+      fotoProfil: null,
+      statusKaryawanId: '2a4fcf67-9335-4337-b578-902b5d1e6641',
+      pendidikanTerakhirId: 'b9134c4a-66ac-4bf6-804f-ca793cc1c55c',
+      statusPernikahanId: '928affb8-687a-4d46-91c5-45fdf2512ea8',
+      nomorHp: '1',
+      alamat: '1',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: '841c1eb4-f34d-47e4-a4e2-0015d0766c3a',
+      nrk: '0000000000000000',
+      nik: '0000000000000000',
+      nama: 'Reffan Damanik',
+      jenisKelamin: 'L',
+      jabatan: 'PKL',
+      gradeId: '69ed633e-3a10-4806-b0bb-69012c2759c4',
+      atasanId: null,
+      unitOrganisasiId: 'e3ff63c3-c05f-4dd7-8d91-c26be4337727',
+      tanggalMasuk: '2026-07-01',
+      tempatLahir: 'Medan',
+      tanggalLahir: '2026-06-09',
+      fotoProfil: null,
+      statusKaryawanId: '9bcc4704-599b-40d9-ba98-1e7cf82491a1',
+      pendidikanTerakhirId: '71720f63-e7df-4ad1-a6ca-91940fa042f9',
+      statusPernikahanId: '24ef60ef-1c48-404d-8372-8517191d4bb5',
+      nomorHp: '000000000000',
+      alamat: '000000000000000',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'a49bc411-dde4-4f4e-9537-1bdfbc976262',
+      nrk: '00000000000',
+      nik: '0000000000000001',
+      nama: 'Herbiana',
+      jenisKelamin: 'P',
+      jabatan: 'Admin MR & HSSE',
+      gradeId: 'c9dc4f45-3b5f-428c-a9dc-acdfe961a13f',
+      atasanId: null,
+      unitOrganisasiId: '234508a8-2b07-4885-ad29-7202c119fd1f',
+      tanggalMasuk: '2026-06-25',
+      tempatLahir: 'Sei Mangkei',
+      tanggalLahir: '2026-06-01',
+      fotoProfil: '1782445796370_11m7gk.jpg',
+      statusKaryawanId: '4345a076-dda0-4120-825c-03e841d30cdf',
+      pendidikanTerakhirId: 'b9134c4a-66ac-4bf6-804f-ca793cc1c55c',
+      statusPernikahanId: '928affb8-687a-4d46-91c5-45fdf2512ea8',
+      nomorHp: '00000',
+      alamat: '00000',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'd1065e77-06ea-470d-b7d6-465ff9152469',
+      nrk: '0348182831234',
+      nik: '0000000000000002',
+      nama: 'Gilang Syafrizal',
+      jenisKelamin: 'L',
+      jabatan: 'Admin HSSE',
+      gradeId: '8384b160-711f-43f9-97b7-647beae89137',
+      atasanId: null,
+      unitOrganisasiId: '234508a8-2b07-4885-ad29-7202c119fd1f',
+      tanggalMasuk: '2026-06-25',
+      tempatLahir: 'Mangkei',
+      tanggalLahir: '2026-06-12',
+      fotoProfil: null,
+      statusKaryawanId: '4345a076-dda0-4120-825c-03e841d30cdf',
+      pendidikanTerakhirId: '7ac99029-3162-4399-b289-74f9b86ed391',
+      statusPernikahanId: '8324ee8e-cc67-42b0-8910-4f7377cf50c1',
+      nomorHp: '-',
+      alamat: '-',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'd77c4b41-cf2f-4a4c-a5f2-56df3af427c9',
+      nrk: '00000000000000000',
+      nik: '0000000000000003',
+      nama: 'Agung Prayoga',
+      jenisKelamin: 'L',
+      jabatan: 'Admin HSSE',
+      gradeId: '8384b160-711f-43f9-97b7-647beae89137',
+      atasanId: null,
+      unitOrganisasiId: '234508a8-2b07-4885-ad29-7202c119fd1f',
+      tanggalMasuk: '2026-06-26',
+      tempatLahir: 'Sei Mangkei',
+      tanggalLahir: '2026-06-25',
+      fotoProfil: '1782446876286_p01pd6.jpg',
+      statusKaryawanId: '2a4fcf67-9335-4337-b578-902b5d1e6641',
+      pendidikanTerakhirId: '7ac99029-3162-4399-b289-74f9b86ed391',
+      statusPernikahanId: '8324ee8e-cc67-42b0-8910-4f7377cf50c1',
+      nomorHp: '-',
+      alamat: '-',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'e2c086f0-8046-49aa-8260-2a2c4c01dde2',
+      nrk: '012479812798389021',
+      nik: '0000000000000004',
+      nama: 'Hendry Suheri',
+      jenisKelamin: 'L',
+      jabatan: 'Danton',
+      gradeId: '8384b160-711f-43f9-97b7-647beae89137',
+      atasanId: null,
+      unitOrganisasiId: '234508a8-2b07-4885-ad29-7202c119fd1f',
+      tanggalMasuk: '2026-06-26',
+      tempatLahir: 'Mangkei',
+      tanggalLahir: '2026-06-07',
+      fotoProfil: '1782447061065_h4mx8h.png',
+      statusKaryawanId: '4345a076-dda0-4120-825c-03e841d30cdf',
+      pendidikanTerakhirId: 'b9134c4a-66ac-4bf6-804f-ca793cc1c55c',
+      statusPernikahanId: '8324ee8e-cc67-42b0-8910-4f7377cf50c1',
+      nomorHp: '0',
+      alamat: '0',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: 'a2461203-96a3-45c1-85ba-7c547b253090',
+      nrk: '11111111111111',
+      nik: '1111111111211212',
+      nama: 'Raihan',
+      jenisKelamin: 'P',
+      jabatan: 'IT SS',
+      gradeId: '69ed633e-3a10-4806-b0bb-69012c2759c4',
+      atasanId: '45d81ecb-5357-41dc-8bb4-7d1e7aa7a1a9',
+      unitOrganisasiId: 'e3ff63c3-c05f-4dd7-8d91-c26be4337727',
+      tanggalMasuk: '2026-06-02',
+      tempatLahir: 'Medan',
+      tanggalLahir: '2026-06-30',
+      fotoProfil: '1782528216635_kpnsje.png',
+      statusKaryawanId: '9bcc4704-599b-40d9-ba98-1e7cf82491a1',
+      pendidikanTerakhirId: 'c2121010-9cdd-4c10-8aeb-273200668855',
+      statusPernikahanId: '24ef60ef-1c48-404d-8372-8517191d4bb5',
+      nomorHp: '0182903',
+      alamat: '124132412',
+      isActive: true,
+      penempatanAreaId: null,
+    },
+    {
+      id: '34ab76d8-fc76-4089-8cb4-79300217a55f',
+      nrk: '179817242178398',
+      nik: '0000000000000011',
+      nama: 'M RInko Wing Kurniawan',
+      jenisKelamin: 'L',
+      jabatan: 'IT',
+      gradeId: '8384b160-711f-43f9-97b7-647beae89137',
+      atasanId: null,
+      unitOrganisasiId: 'e3ff63c3-c05f-4dd7-8d91-c26be4337727',
+      tanggalMasuk: '2026-06-18',
+      tempatLahir: 'Medan',
+      tanggalLahir: '2026-06-03',
+      fotoProfil: '1782480949033_44x699.png',
+      statusKaryawanId: '4345a076-dda0-4120-825c-03e841d30cdf',
+      pendidikanTerakhirId: '76638846-8f34-45f2-929f-ec5b807e61ae',
+      statusPernikahanId: '928affb8-687a-4d46-91c5-45fdf2512ea8',
+      nomorHp: '087868895920',
+      alamat: '111',
+      isActive: true,
+      penempatanAreaId: null,
+    },
   ]
 
-  // Clear existing tables in correct order to avoid foreign key violations
-  await db.delete(ssoToken)
-  await db.delete(appUserAccess)
-  await db.delete(user)
-  await db.delete(employee)
+  for (const emp of employeeData) {
+    await db.insert(employee).values(emp).onConflictDoNothing()
+  }
 
-  for (const emp of rawEmployees) {
-    const gradeId = gradeMap.get(emp.grade) || null
-    const unitId = unitMap.get(emp.unit) || null
-    const statusKaryawanId = statusKaryawanMap.get(emp.st) || null
-    const pendidikanTerakhirId = pendidikanMap.get(emp.pd) || null
-    const statusPernikahanId = statusPernikahanMap.get(emp.nk) || null
-    const penempatanAreaId = penempatanAreaMap.get(emp.area) || null
-
-    // 1. Insert Employee
-    const [insertedEmp] = await db.insert(employee).values({
-      nrk: emp.nrk,
-      nik: emp.nik,
-      nama: emp.nama,
-      jenisKelamin: emp.jk,
-      jabatan: emp.jab,
-      gradeId,
-      unitOrganisasiId: unitId,
-      statusKaryawanId,
-      pendidikanTerakhirId,
-      statusPernikahanId,
-      penempatanAreaId,
+  // ── Users ──────────────────────────────────────────────────────────────────
+  console.log('   → users')
+  const userData = [
+    {
+      id: '3eae0052-e443-47d3-aff7-aa6aa818abb9',
+      email: 'tonang@inl.co.id',
+      passwordHash: '$2b$12$4zWcZ3krsCh4KRkvU4i6E.dMYBrgiUmrkHUDbtzkSIbC2eqUPO09i',
+      role: 'user' as const,
       isActive: true,
-    }).returning()
+      lastLogin: null,
+      tokenVersion: 1,
+      employeeId: '2fd4e52c-9d02-422c-b687-bcd220dc83b6',
+      totpSecret: null,
+      totpEnabled: false,
+    },
+    {
+      id: '24d9198f-e074-42c6-88df-e13ac45aba42',
+      email: 'salman@inl.co.id',
+      passwordHash: '$2b$12$RvMqsqC.dPCbBmD/HJ4BFOjduTb9UNOXLZiuMLdqPzem.fXz4zZdK',
+      role: 'user' as const,
+      isActive: true,
+      lastLogin: null,
+      tokenVersion: 1,
+      employeeId: 'a21b8125-2118-4739-a78a-b74f344d3367',
+      totpSecret: null,
+      totpEnabled: false,
+    },
+    {
+      id: '8f193598-c1e4-4fb7-a143-2a6a139cfe37',
+      email: 'ringkoaja@gmail.com',
+      passwordHash: '$2b$12$ua/bx8MYwF3qWOppkyjOlO2iIYjqyGxFqgsXAlPcsjqNmGruKhx0a',
+      role: 'user' as const,
+      isActive: true,
+      lastLogin: new Date('2026-06-26T14:00:26.63Z'),
+      tokenVersion: 3,
+      employeeId: '34ab76d8-fc76-4089-8cb4-79300217a55f',
+      totpSecret: 'JPRPPA77CPPZHDDY',
+      totpEnabled: false,
+    },
+    {
+      id: '8670eacc-3420-47b3-a6e0-646c20506d89',
+      email: 'tomy@inl.co.id',
+      passwordHash: '$2b$12$7ai8lWUEHZKvBo3fym41aemjHSy.794UryxR4OtFkxZDpvhbdbN1m',
+      role: 'user' as const,
+      isActive: true,
+      lastLogin: new Date('2026-06-26T13:26:22.122Z'),
+      tokenVersion: 8,
+      employeeId: '45d81ecb-5357-41dc-8bb4-7d1e7aa7a1a9',
+      totpSecret: null,
+      totpEnabled: false,
+    },
+    {
+      id: 'e7016a86-7cc3-4b0b-a02f-7557373bdbac',
+      email: 'admin@inl.co.id',
+      passwordHash: '$2b$12$bVTLRYQUSLIvfoJbAgvO4O9cv..ujPzbJMr2WySXII1Q7iSlunqIG',
+      role: 'super_admin' as const,
+      isActive: true,
+      lastLogin: new Date('2026-06-28T02:28:08.012Z'),
+      tokenVersion: 10,
+      employeeId: null,
+      totpSecret: null,
+      totpEnabled: false,
+    },
+  ]
 
-    // 2. Insert User
-    await db.insert(user).values({
-      email: emp.email,
-      passwordHash: commonPasswordHash,
-      role: emp.role as any,
-      isActive: emp.active,
-      employeeId: insertedEmp.id,
-    })
+  for (const u of userData) {
+    await db.insert(user).values(u).onConflictDoNothing()
   }
-
-  // Connect manager reporting hierarchies (atasan_id)
-  const allEmps = await db.select().from(employee)
-  const empMap = new Map(allEmps.map(e => [e.nrk, e.id]))
-
-  const updateReport = async (subordinateNrk: string, managerNrk: string) => {
-    const subId = empMap.get(subordinateNrk)
-    const mgrId = empMap.get(managerNrk)
-    if (subId && mgrId) {
-      await db.update(employee).set({ atasanId: mgrId }).where(eq(employee.id, subId))
-    }
-  }
-
-  // DIRUT reports to nobody
-  // SEVPs report to DIRUT
-  await updateReport('NRK-003', 'NRK-002') // SEVP-OPS -> DIRUT
-  await updateReport('NRK-004', 'NRK-002') // SEVP-CORP -> DIRUT
-  
-  // Managers report to SEVPs
-  await updateReport('NRK-005', 'NRK-003') // BAG-PROD Manager -> SEVP-OPS
-  await updateReport('NRK-006', 'NRK-003') // BAG-MAINT Manager -> SEVP-OPS
-  await updateReport('NRK-007', 'NRK-004') // BAG-FIN Manager -> SEVP-CORP
-  await updateReport('NRK-008', 'NRK-004') // BAG-HR Manager -> SEVP-CORP
-  await updateReport('NRK-009', 'NRK-004') // BAG-IT Manager -> SEVP-CORP
-
-  // Asst Managers report to Managers
-  await updateReport('NRK-010', 'NRK-005') // SUBBAG-FRAC Asst -> BAG-PROD Manager
-  await updateReport('NRK-011', 'NRK-005') // SUBBAG-PACK Asst -> BAG-PROD Manager
-  await updateReport('NRK-012', 'NRK-006') // SUBBAG-MECH Asst -> BAG-MAINT Manager
-  await updateReport('NRK-013', 'NRK-006') // SUBBAG-ELEC Asst -> BAG-MAINT Manager
-  await updateReport('NRK-014', 'NRK-007') // SUBBAG-TAX Asst -> BAG-FIN Manager
-  await updateReport('NRK-015', 'NRK-008') // SUBBAG-RECRUIT Asst -> BAG-HR Manager
-  await updateReport('NRK-016', 'NRK-008') // SUBBAG-GA Asst -> BAG-HR Manager
-  await updateReport('NRK-017', 'NRK-009') // SUBBAG-NET Asst -> BAG-IT Manager
-  await updateReport('NRK-018', 'NRK-001') // SUBBAG-APP Asst -> Budi Santoso (Admin / BOM-4) - let's make Budi Santoso direct report to IT Manager
-  await updateReport('NRK-001', 'NRK-009') // Budi Santoso (Admin) -> BAG-IT Manager
-
-  // Staff report to Asst Managers
-  await updateReport('NRK-019', 'NRK-010') // Rudi (SPV) -> Fractionation Asst
-  await updateReport('NRK-020', 'NRK-011') // Siti (SPV) -> Packaging Asst
-  await updateReport('NRK-021', 'NRK-012') // Triyono (SPV) -> Mechanical Asst
-  await updateReport('NRK-022', 'NRK-013') // Utomo (SPV) -> Electrical Asst
-  await updateReport('NRK-023', 'NRK-014') // Vivi (Staff) -> Tax Asst
-  await updateReport('NRK-024', 'NRK-015') // Wahyu (Staff) -> Recruit Asst
-  await updateReport('NRK-025', 'NRK-016') // Yuni (Staff) -> GA Asst
-  await updateReport('NRK-026', 'NRK-017') // Zulkifli (Staff) -> Net Asst
-  await updateReport('NRK-027', 'NRK-018') // Ade (Developer) -> App Asst
-
-  // Operators report to Supervisors
-  await updateReport('NRK-028', 'NRK-019') // Operator -> Fractionation SPV
-  await updateReport('NRK-029', 'NRK-019') // Operator -> Fractionation SPV
-  await updateReport('NRK-030', 'NRK-020') // Operator -> Packaging SPV
-  await updateReport('NRK-031', 'NRK-020') // Operator -> Packaging SPV
-  await updateReport('NRK-032', 'NRK-021') // Operator -> Mechanical SPV
-  await updateReport('NRK-033', 'NRK-021') // Operator -> Mechanical SPV
-  await updateReport('NRK-034', 'NRK-022') // Operator -> Electrical SPV
-  await updateReport('NRK-035', 'NRK-022') // Operator -> Electrical SPV
-
-  // Interns and Outsource report to Asst Managers / Supervisors
-  await updateReport('NRK-036', 'NRK-017') // Magang IT -> Net Asst
-  await updateReport('NRK-037', 'NRK-015') // Magang HR -> Recruit Asst
-  await updateReport('NRK-038', 'NRK-014') // Magang Fin -> Tax Asst
-  await updateReport('NRK-039', 'NRK-016') // Driver -> GA Asst
-  await updateReport('NRK-040', 'NRK-016') // Resepsionis -> GA Asst
-
-  console.log('   ✅ Employees and Users loaded successfully')
 
   // ── Aplikasi ───────────────────────────────────────────────────────────────
   console.log('   → aplikasi')
-  await db.delete(aplikasi)
-
-  const appData = [
+  const aplikasiData = [
     {
-      nama: 'E-Office INL',
-      url: 'http://localhost:4001',
-      authMode: 'sso' as const,
-      warna: '#10b981',
-      deskripsi: 'Sistem informasi persuratan resmi dan tata kelola administrasi dokumen kantor.',
+      id: '2de877fe-8e91-4511-8d11-9f1979668802',
+      nama: 'Google',
+      url: 'google.com',
+      authMode: 'independent' as const,
+      icon: '1782480835216_x8dy2t.png',
+      deskripsi: 'apk untuk google',
       urutan: 1,
       isActive: true,
+      warna: '#3b82f6',
     },
     {
-      nama: 'HRIS Portal',
-      url: 'http://localhost:4002',
+      id: '79864e1a-233b-4196-a6da-909ff7490f6f',
+      nama: 'Sistem Absensi',
+      url: 'https://absensi.inl.co.id',
       authMode: 'sso' as const,
-      warna: '#6366f1',
-      deskripsi: 'Portal layanan kepegawaian mandiri (Employee Self Service), cuti, lembur, dan absensi.',
-      urutan: 2,
+      icon: '1782480852938_k0glts.png',
+      deskripsi: 'Sistem pencatatan kehadiran karyawan',
+      urutan: 1,
       isActive: true,
-    },
-    {
-      nama: 'E-Procurement',
-      url: 'http://localhost:4003',
-      authMode: 'independent' as const,
-      warna: '#f59e0b',
-      deskripsi: 'Sistem pengadaan barang dan jasa elektronik PT. Industri Nabati Lestari.',
-      urutan: 3,
-      isActive: true,
+      warna: '#3b82f6',
     },
   ]
-  for (const app of appData) {
+
+  for (const app of aplikasiData) {
     await db.insert(aplikasi).values(app).onConflictDoNothing()
   }
 
-  const allApps = await db.select().from(aplikasi)
-  const appMap = new Map(allApps.map(a => [a.nama, a.id]))
+  // ── Activity Logs ──────────────────────────────────────────────────────────
+  console.log('   → activity_log')
+  // Ambil beberapa user untuk di-link ke log
+  const allUsers = await db.select({ id: user.id, email: user.email }).from(user)
+  const adminUser = allUsers.find(u => u.email === 'admin@inl.co.id')
+  const normalUser = allUsers.find(u => u.email === 'hendra.gunawan@inl.co.id') || allUsers.find(u => u.email !== 'admin@inl.co.id')
 
-  // ── App User Access ────────────────────────────────────────────────────────
-  console.log('   → app_user_access')
-  await db.delete(appUserAccess)
-
-  const dbUsers = await db.select().from(user)
-  const eOfficeId = appMap.get('E-Office INL')
-  const hrisId = appMap.get('HRIS Portal')
-  const eProcId = appMap.get('E-Procurement')
-  const superAdminUser = dbUsers.find(u => u.role === 'super_admin')
-
-  if (superAdminUser && eOfficeId && hrisId && eProcId) {
-    // Give all users access to E-Office and HRIS, and some to E-Proc
-    for (const u of dbUsers) {
-      await db.insert(appUserAccess).values({
-        userId: u.id,
-        appId: eOfficeId,
-        grantedById: superAdminUser.id,
-      })
-      await db.insert(appUserAccess).values({
-        userId: u.id,
-        appId: hrisId,
-        grantedById: superAdminUser.id,
-      })
-
-      // Randomly grant E-Procurement access to 50% of the users
-      if (Math.random() > 0.5) {
-        await db.insert(appUserAccess).values({
-          userId: u.id,
-          appId: eProcId,
-          grantedById: superAdminUser.id,
-        })
-      }
-    }
+  if (adminUser) {
+    await db.insert(activityLog).values([
+      {
+        userId: adminUser.id,
+        action: 'login',
+        details: 'Login ke Portal SSO',
+        createdAt: new Date(Date.now() - 3600000 * 5),
+      },
+      {
+        userId: adminUser.id,
+        action: 'access_app',
+        appId: '79864e1a-233b-4196-a6da-909ff7490f6f', // Sistem Absensi
+        details: 'Login Single Sign-On (SSO) ke aplikasi "Sistem Absensi"',
+        createdAt: new Date(Date.now() - 3600000 * 4.5),
+      },
+      {
+        userId: adminUser.id,
+        action: 'update_profile_photo',
+        details: 'Mengubah foto profil karyawan',
+        createdAt: new Date(Date.now() - 3600000 * 3),
+      },
+    ])
   }
 
-  // ── SSO Token Daily Logs (June 2026) ────────────────────────────────────────
-  console.log('   → sso_token (Daily Logs for June 2026)')
-  await db.delete(ssoToken)
-  
-  const ssoLogs: any[] = []
-  
-  // Deterministic randomizer helper
-  let seedVal = 12345
-  const rand = () => {
-    seedVal = (seedVal * 9301 + 49297) % 233280
-    return seedVal / 233280
-  }
-
-  const appIds = [eOfficeId, hrisId, eProcId].filter(Boolean) as string[]
-  const userIds = dbUsers.map(u => u.id)
-
-  if (appIds.length > 0 && userIds.length > 0) {
-    for (let day = 1; day <= 30; day++) {
-      // Generate between 15 and 40 tokens per day
-      const count = 15 + Math.floor(rand() * 25)
-      for (let i = 0; i < count; i++) {
-        const uId = userIds[Math.floor(rand() * userIds.length)]
-        const appId = appIds[Math.floor(rand() * appIds.length)]
-        const hour = 8 + Math.floor(rand() * 9) // 08:00 to 17:00
-        const min = Math.floor(rand() * 60)
-        const sec = Math.floor(rand() * 60)
-        
-        const issuedAt = new Date(2026, 5, day, hour, min, sec) // Month is 0-indexed, so 5 is June
-        const expiresAt = new Date(issuedAt.getTime() + 5 * 60 * 1000) // +5 min
-
-        ssoLogs.push({
-          userId: uId,
-          appId: appId,
-          tokenHash: crypto.createHash('sha256').update(crypto.randomBytes(40).toString('hex')).digest('hex'),
-          issuedAt,
-          expiresAt,
-          isRevoked: false,
-        })
-      }
-    }
-
-    // Insert daily logs in chunks of 100 to avoid query parameter limit issues
-    const chunkSize = 100
-    for (let i = 0; i < ssoLogs.length; i += chunkSize) {
-      const chunk = ssoLogs.slice(i, i + chunkSize)
-      await db.insert(ssoToken).values(chunk)
-    }
-    console.log(`   ✅ Seeded ${ssoLogs.length} login logs for June 2026`)
+  if (normalUser) {
+    await db.insert(activityLog).values([
+      {
+        userId: normalUser.id,
+        action: 'login',
+        details: 'Login ke Portal SSO (IP: 192.168.10.42)',
+        createdAt: new Date(Date.now() - 3600000 * 2),
+      },
+      {
+        userId: normalUser.id,
+        action: 'access_app',
+        appId: '2de877fe-8e91-4511-8d11-9f1979668802', // Google
+        details: 'Mengakses aplikasi Independent "Google"',
+        createdAt: new Date(Date.now() - 3600000 * 1.8),
+      },
+      {
+        userId: normalUser.id,
+        action: 'logout',
+        details: 'Logout dari portal',
+        createdAt: new Date(Date.now() - 3600000 * 0.5),
+      },
+    ])
   }
 
   console.log('\n✅  Seeding complete!\n')

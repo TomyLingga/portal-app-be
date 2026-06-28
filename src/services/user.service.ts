@@ -1,7 +1,7 @@
 // ─── Service: User ────────────────────────────────────────────────────────────
 import { eq, ilike, and, count, SQL } from 'drizzle-orm'
 import { db }              from '../db'
-import { user as userTable, appUserAccess, aplikasi } from '../db/schema'
+import { user as userTable, appUserAccess, aplikasi, employee, userPasskey } from '../db/schema'
 import { hashPassword }    from '../utils/hash'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type { CreateUserInput, UpdateUserInput, ListUserQuery } from '../validators/user.validator'
@@ -22,16 +22,20 @@ export async function listUsersService(query: ListUserQuery) {
 
   const rows = await db
     .select({
-      id:         userTable.id,
-      email:      userTable.email,
-      role:       userTable.role,
-      isActive:   userTable.isActive,
-      lastLogin:  userTable.lastLogin,
-      employeeId: userTable.employeeId,
-      createdAt:  userTable.createdAt,
+      id:          userTable.id,
+      email:       userTable.email,
+      role:        userTable.role,
+      isActive:    userTable.isActive,
+      lastLogin:   userTable.lastLogin,
+      employeeId:  userTable.employeeId,
+      createdAt:   userTable.createdAt,
+      totpEnabled: userTable.totpEnabled,
+      passkeyCount: count(userPasskey.id),
     })
     .from(userTable)
+    .leftJoin(userPasskey, eq(userTable.id, userPasskey.userId))
     .where(where)
+    .groupBy(userTable.id)
     .limit(limit)
     .offset(offset)
     .orderBy(userTable.createdAt)
@@ -187,4 +191,75 @@ export async function getUserAppsService(userId: string) {
     .innerJoin(aplikasi, eq(appUserAccess.appId, aplikasi.id))
     .where(and(eq(appUserAccess.userId, userId), eq(aplikasi.isActive, true)))
     .orderBy(aplikasi.urutan)
+}
+
+export async function listAllPasskeysService() {
+  return db
+    .select({
+      id: userPasskey.id,
+      name: userPasskey.name,
+      counter: userPasskey.counter,
+      createdAt: userPasskey.createdAt,
+      user: {
+        id: userTable.id,
+        email: userTable.email,
+      },
+      employee: {
+        id: employee.id,
+        nama: employee.nama,
+        jabatan: employee.jabatan,
+      }
+    })
+    .from(userPasskey)
+    .innerJoin(userTable, eq(userPasskey.userId, userTable.id))
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .orderBy(userPasskey.createdAt)
+}
+
+export async function deletePasskeyAdminService(id: string) {
+  const [deleted] = await db
+    .delete(userPasskey)
+    .where(eq(userPasskey.id, id))
+    .returning()
+  if (!deleted) throw new Error('Passkey tidak ditemukan')
+  return deleted
+}
+
+export async function deleteAllUserPasskeysService(userId: string) {
+  const deleted = await db
+    .delete(userPasskey)
+    .where(eq(userPasskey.userId, userId))
+    .returning()
+  return deleted
+}
+
+export async function listUsers2faService() {
+  return db
+    .select({
+      id: userTable.id,
+      email: userTable.email,
+      role: userTable.role,
+      totpEnabled: userTable.totpEnabled,
+      employee: {
+        id: employee.id,
+        nama: employee.nama,
+        jabatan: employee.jabatan,
+      }
+    })
+    .from(userTable)
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .orderBy(userTable.email)
+}
+
+export async function disableUser2faService(userId: string) {
+  const [updated] = await db
+    .update(userTable)
+    .set({
+      totpEnabled: false,
+      totpSecret: null
+    })
+    .where(eq(userTable.id, userId))
+    .returning()
+  if (!updated) throw new Error('User tidak ditemukan')
+  return updated
 }

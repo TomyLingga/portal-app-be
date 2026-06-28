@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { eq, and } from 'drizzle-orm'
 import { db } from '../db'
-import { user as userTable, employee, userPasskey } from '../db/schema'
+import { user as userTable, employee, userPasskey, activityLog } from '../db/schema'
 import { config } from '../config/env'
 import { createRefreshToken } from './auth.service'
 import type { FastifyInstance } from 'fastify'
@@ -178,6 +178,17 @@ export async function verifyPasskeyLoginService(
 
   // Update lastLogin
   await db.update(userTable).set({ lastLogin: new Date() }).where(eq(userTable.id, user.id))
+
+  // Log activity
+  try {
+    await db.insert(activityLog).values({
+      userId: user.id,
+      action: 'login',
+      details: 'Login ke portal dengan Passkey',
+    })
+  } catch (err) {
+    // Ignore logging error
+  }
 
   const accessToken = fastify.jwt.sign({
     sub:          user.id,

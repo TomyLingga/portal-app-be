@@ -1,7 +1,7 @@
 // ─── Service: Master (Master Data & Stats) ──────────────────────────────────────
 import { db } from '../db'
-import { user as userTable, aplikasi, ssoToken } from '../db/schema'
-import { eq, and, gte, lte, desc } from 'drizzle-orm'
+import { user as userTable, aplikasi, activityLog } from '../db/schema'
+import { eq, and, gte, lte, desc, or, ilike, count } from 'drizzle-orm'
 
 export async function getMasterStatsService(currentYear: number, currentMonth: number) {
   // 1. Counts
@@ -17,18 +17,21 @@ export async function getMasterStatsService(currentYear: number, currentMonth: n
   const startDate = new Date(currentYear, currentMonth - 1, 1)
   const endDate = new Date(currentYear, currentMonth, 1)
 
-  const tokens = await db
+  const logs = await db
     .select({
-      id: ssoToken.id,
-      appId: ssoToken.appId,
-      issuedAt: ssoToken.issuedAt,
-      userId: ssoToken.userId,
+      id: activityLog.id,
+      appId: activityLog.appId,
+      issuedAt: activityLog.createdAt,
+      userId: activityLog.userId,
     })
-    .from(ssoToken)
+    .from(activityLog)
     .where(and(
-      gte(ssoToken.issuedAt, startDate),
-      lte(ssoToken.issuedAt, endDate)
+      eq(activityLog.action, 'access_app'),
+      gte(activityLog.createdAt, startDate),
+      lte(activityLog.createdAt, endDate)
     ))
+
+  const tokens = logs.filter(l => l.appId !== null) as { id: string; appId: string; issuedAt: Date; userId: string }[]
 
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate()
   const dailyLogs: any[] = []
@@ -66,49 +69,21 @@ export async function getMasterStatsService(currentYear: number, currentMonth: n
     }
   })
 
-  // 3. Recent activity logs (users registration + app access)
-  const activities: any[] = []
-
-  // Add recent user registrations
-  const recentUsers = await db
-    .select({ email: userTable.email, createdAt: userTable.createdAt })
-    .from(userTable)
-    .orderBy(desc(userTable.createdAt))
-    .limit(5)
-
-  recentUsers.forEach(u => {
-    activities.push({
-      type: 'user_reg',
-      text: `User "${u.email}" bergabung ke portal`,
-      time: u.createdAt,
-    })
-  })
-
-  // Add recent app access tokens
-  const recentTokens = await db
+  // 3. Recent activity logs (comprehensive audit logs)
+  const logsList = await db
     .select({
       email: userTable.email,
-      appName: aplikasi.nama,
-      issuedAt: ssoToken.issuedAt
+      action: activityLog.action,
+      details: activityLog.details,
+      createdAt: activityLog.createdAt,
     })
-    .from(ssoToken)
-    .innerJoin(userTable, eq(ssoToken.userId, userTable.id))
-    .innerJoin(aplikasi, eq(ssoToken.appId, aplikasi.id))
-    .orderBy(desc(ssoToken.issuedAt))
-    .limit(5)
+    .from(activityLog)
+    .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+    .orderBy(desc(activityLog.createdAt))
+    .limit(10)
 
-  recentTokens.forEach(t => {
-    activities.push({
-      type: 'app_access',
-      text: `User "${t.email}" mengakses aplikasi "${t.appName}"`,
-      time: t.issuedAt,
-    })
-  })
-
-  // Sort activities by time desc
-  activities.sort((a, b) => b.time.getTime() - a.time.getTime())
-  const finalActivities = activities.slice(0, 6).map(act => {
-    const diffMs = Date.now() - act.time.getTime()
+  const finalActivities = logsList.map(act => {
+    const diffMs = Date.now() - act.createdAt.getTime()
     const diffMins = Math.floor(diffMs / 60000)
     const diffHours = Math.floor(diffMins / 60)
     const diffDays = Math.floor(diffHours / 24)
@@ -118,9 +93,25 @@ export async function getMasterStatsService(currentYear: number, currentMonth: n
     else if (diffHours > 0) relativeTime = `${diffHours} jam lalu`
     else if (diffMins > 0) relativeTime = `${diffMins} mnt lalu`
 
+    let type = 'info'
+    let text = act.details
+    if (act.action === 'login') {
+      type = 'login'
+      text = `User "${act.email}" masuk portal`
+    } else if (act.action === 'logout') {
+      type = 'logout'
+      text = `User "${act.email}" keluar portal`
+    } else if (act.action === 'access_app') {
+      type = 'access'
+      text = `User "${act.email}" ${act.details.toLowerCase()}`
+    } else if (act.action === 'update_profile_photo') {
+      type = 'profile'
+      text = `User "${act.email}" mengubah foto profil`
+    }
+
     return {
-      type: act.type,
-      text: act.text,
+      type,
+      text,
       time: relativeTime
     }
   })
@@ -133,5 +124,74 @@ export async function getMasterStatsService(currentYear: number, currentMonth: n
     dailyLogs,
     appsList,
     recentActivities: finalActivities
+  }
+}
+
+export async function getPaginatedLogsService(params: {
+  page: number
+  limit: number
+  search?: string
+  startDate?: string
+  endDate?: string
+}) {
+  const page = Math.max(1, params.page)
+  const limit = Math.max(1, params.limit)
+  const offset = (page - 1) * limit
+
+  const conditions: any[] = []
+
+  if (params.startDate) {
+    conditions.push(gte(activityLog.createdAt, new Date(params.startDate)))
+  }
+  if (params.endDate) {
+    conditions.push(lte(activityLog.createdAt, new Date(params.endDate)))
+  }
+
+  if (params.search) {
+    conditions.push(
+      or(
+        ilike(userTable.email, `%${params.search}%`),
+        ilike(activityLog.details, `%${params.search}%`),
+        ilike(activityLog.action, `%${params.search}%`)
+      )
+    )
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+  let query = db
+    .select({
+      id: activityLog.id,
+      email: userTable.email,
+      action: activityLog.action,
+      details: activityLog.details,
+      createdAt: activityLog.createdAt,
+    })
+    .from(activityLog)
+    .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+
+  const countQuery = db
+    .select({ total: count() })
+    .from(activityLog)
+    .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+
+  const finalQuery = whereClause ? query.where(whereClause) : query
+  const finalCountQuery = whereClause ? countQuery.where(whereClause) : countQuery
+
+  const data = await finalQuery
+    .orderBy(desc(activityLog.createdAt))
+    .limit(limit)
+    .offset(offset)
+
+  const [{ total }] = await finalCountQuery
+
+  return {
+    data,
+    meta: {
+      page,
+      limit,
+      total: Number(total),
+      totalPages: Math.ceil(Number(total) / limit),
+    }
   }
 }

@@ -64,6 +64,7 @@ async function buildApp() {
   // ─── Health check ────────────────────────────────────────────────────────────
   fastify.get('/health', async () => ({
     status:    'ok',
+    uptime:    process.uptime(),
     timestamp: new Date().toISOString(),
     version:   process.env.npm_package_version ?? '1.0.0',
   }))

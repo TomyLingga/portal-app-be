@@ -7,7 +7,7 @@ import {
 import {
   listAplikasiService, getAplikasiByIdService,
   createAplikasiService, updateAplikasiService, deleteAplikasiService,
-  updateAplikasiIconService,
+  updateAplikasiIconService, logAppAccessService,
 } from '../services/aplikasi.service'
 import { saveUploadedFile }  from '../utils/file'
 import { ok } from '../utils/response'
@@ -48,6 +48,14 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string }
     await deleteAplikasiService(id)
     return reply.code(204).send()
+  })
+
+  // POST /api/apps/:id/access — log access to independent app
+  fastify.post('/:id/access', { preHandler: authOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const userId = request.user.sub
+    await logAppAccessService(userId, id)
+    return reply.send(ok({ success: true }))
   })
 
   // POST /api/apps/:id/icon — upload icon aplikasi (multipart)
