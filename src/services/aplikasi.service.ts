@@ -4,6 +4,7 @@ import { db }        from '../db'
 import { aplikasi, notification }  from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type { CreateAplikasiInput, UpdateAplikasiInput, ListAplikasiQuery } from '../validators/aplikasi.validator'
+import { deleteFile, buildFileUrl } from '../utils/file'
 
 export async function listAplikasiService(query: ListAplikasiQuery) {
   const { page, limit, offset } = getPaginationParams(query)
@@ -63,7 +64,35 @@ export async function updateAplikasiService(id: string, input: UpdateAplikasiInp
 }
 
 export async function deleteAplikasiService(id: string) {
-  const [existing] = await db.select({ id: aplikasi.id }).from(aplikasi).where(eq(aplikasi.id, id)).limit(1)
+  const [existing] = await db.select({ id: aplikasi.id, icon: aplikasi.icon }).from(aplikasi).where(eq(aplikasi.id, id)).limit(1)
   if (!existing) throw new Error('Aplikasi tidak ditemukan')
+
+  if (existing.icon && (existing.icon.includes('/') || existing.icon.includes('.'))) {
+    deleteFile(existing.icon)
+  }
+
   await db.delete(aplikasi).where(eq(aplikasi.id, id))
+}
+
+export async function updateAplikasiIconService(id: string, filename: string) {
+  const [existing] = await db
+    .select({ id: aplikasi.id, icon: aplikasi.icon })
+    .from(aplikasi)
+    .where(eq(aplikasi.id, id))
+    .limit(1)
+
+  if (!existing) throw new Error('Aplikasi tidak ditemukan')
+
+  // Hapus icon lama jika berupa berkas gambar
+  if (existing.icon && (existing.icon.includes('/') || existing.icon.includes('.'))) {
+    deleteFile(existing.icon)
+  }
+
+  const [updated] = await db
+    .update(aplikasi)
+    .set({ icon: filename, updatedAt: new Date() })
+    .where(eq(aplikasi.id, id))
+    .returning({ icon: aplikasi.icon })
+
+  return { iconUrl: buildFileUrl(updated.icon) }
 }

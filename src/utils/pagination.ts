@@ -16,7 +16,7 @@ export interface PaginationMeta extends Record<string, unknown> {
 
 export function getPaginationParams(query: PaginationQuery) {
   const page  = Math.max(1, query.page  ?? 1)
-  const limit = Math.min(200, Math.max(1, query.limit ?? DEFAULT_LIMIT))
+  const limit = Math.min(1000, Math.max(1, query.limit ?? DEFAULT_LIMIT))
   const offset = (page - 1) * limit
   return { page, limit, offset }
 }

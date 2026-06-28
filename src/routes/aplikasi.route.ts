@@ -1,12 +1,15 @@
 // ─── Routes: Aplikasi ─────────────────────────────────────────────────────────
 import { FastifyInstance }   from 'fastify'
+import { MultipartFile }     from '@fastify/multipart'
 import {
   createAplikasiSchema, updateAplikasiSchema, listAplikasiQuerySchema,
 } from '../validators/aplikasi.validator'
 import {
   listAplikasiService, getAplikasiByIdService,
   createAplikasiService, updateAplikasiService, deleteAplikasiService,
+  updateAplikasiIconService,
 } from '../services/aplikasi.service'
+import { saveUploadedFile }  from '../utils/file'
 import { ok } from '../utils/response'
 
 export default async function aplikasiRoutes(fastify: FastifyInstance) {
@@ -45,5 +48,18 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string }
     await deleteAplikasiService(id)
     return reply.code(204).send()
+  })
+
+  // POST /api/apps/:id/icon — upload icon aplikasi (multipart)
+  fastify.post('/:id/icon', { preHandler: adminOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+
+    const file: MultipartFile | undefined = await request.file()
+    if (!file) throw new Error('File icon tidak ditemukan dalam request')
+
+    const filename = await saveUploadedFile(file, 'apps')
+    const result   = await updateAplikasiIconService(id, filename)
+
+    return reply.send(ok(result))
   })
 }

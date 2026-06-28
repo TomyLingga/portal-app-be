@@ -36,6 +36,20 @@
       "when": 1782538376090,
       "tag": "0004_married_iron_man",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782619710313,
+      "tag": "0005_lyrical_speed_demon",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782620892406,
+      "tag": "0006_unique_iron_monger",
+      "breakpoints": true
     }
   ]
 }

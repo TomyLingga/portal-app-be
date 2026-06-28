@@ -26,6 +26,8 @@ export const user = pgTable('user', {
   // token_version: di-increment setiap logout → token lama otomatis invalid
   tokenVersion: integer('token_version').notNull().default(1),
   employeeId:   uuid('employee_id').references(() => employee.id).unique(), // one-to-one
+  totpSecret:   text('totp_secret'),
+  totpEnabled:  boolean('totp_enabled').notNull().default(false),
   createdAt:    timestamp('created_at').notNull().defaultNow(),
   updatedAt:    timestamp('updated_at').notNull().defaultNow(),
 })
@@ -80,11 +82,29 @@ export const ssoToken = pgTable('sso_token', {
 })
 
 // ─── Relations ────────────────────────────────────────────────────────────────
+// ─── Passkey (WebAuthn Credentials) ──────────────────────────────────────────
+export const userPasskey = pgTable('user_passkey', {
+  id:           uuid('id').primaryKey().$defaultFn(genUUID),
+  userId:       uuid('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
+  name:         varchar('name', { length: 150 }).notNull().default('Perangkat Passkey'),
+  credentialId: varchar('credential_id', { length: 500 }).notNull().unique(),
+  publicKey:    text('public_key').notNull(), // Base64URL encoded public key
+  counter:      integer('counter').notNull().default(0),
+  transports:   text('transports'), // JSON string array
+  createdAt:    timestamp('created_at').notNull().defaultNow(),
+})
+
+// ─── Relations ────────────────────────────────────────────────────────────────
 export const userRelations = relations(user, ({ one, many }) => ({
   employee:      one(employee,     { fields: [user.employeeId], references: [employee.id] }),
   appAccesses:   many(appUserAccess),
   ssoTokens:     many(ssoToken),
   refreshTokens: many(refreshToken),
+  passkeys:      many(userPasskey),
+}))
+
+export const userPasskeyRelations = relations(userPasskey, ({ one }) => ({
+  user: one(user, { fields: [userPasskey.userId], references: [user.id] }),
 }))
 
 export const refreshTokenRelations = relations(refreshToken, ({ one }) => ({

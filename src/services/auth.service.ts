@@ -2,10 +2,12 @@
 import crypto            from 'crypto'
 import { eq, sql, and, desc, or, isNull } from 'drizzle-orm'
 import { db }            from '../db'
-import { user as userTable, refreshToken as refreshTokenTable, ssoToken, aplikasi, notification, userNotificationStatus } from '../db/schema'
+import { user as userTable, refreshToken as refreshTokenTable, ssoToken, aplikasi, notification, userNotificationStatus, employee, userPasskey } from '../db/schema'
 import { hashPassword, verifyPassword } from '../utils/hash'
 import { LoginInput }    from '../validators/auth.validator'
 import { config }        from '../config/env'
+import { buildFileUrl }  from '../utils/file'
+import { generateTOTPSecret, verifyTOTP, getTOTPKeyURI } from '../utils/totp'
 import type { FastifyInstance } from 'fastify'
 
 // ─── Helper: parse expiry string ke ms ────────────────────────────────────────
@@ -22,7 +24,7 @@ function parseExpiry(str: string): number {
 }
 
 // ─── Helper: buat & simpan refresh token ──────────────────────────────────────
-async function createRefreshToken(userId: string): Promise<string> {
+export async function createRefreshToken(userId: string): Promise<string> {
   const raw      = crypto.randomBytes(40).toString('hex')
   const hash     = crypto.createHash('sha256').update(raw).digest('hex')
   const expMs    = parseExpiry(config.refreshToken.expiresIn)
@@ -45,6 +47,17 @@ export async function loginService(fastify: FastifyInstance, input: LoginInput) 
 
   const valid = await verifyPassword(input.password, found.passwordHash)
   if (!valid) throw new Error('Email atau password salah')
+
+  if (found.totpEnabled) {
+    const totpToken = fastify.jwt.sign({
+      sub:     found.id,
+      purpose: 'totp_login',
+    } as any, { expiresIn: '5m' })
+    return {
+      requiresTotp: true,
+      totpToken,
+    }
+  }
 
   // Update lastLogin
   await db.update(userTable).set({ lastLogin: new Date() }).where(eq(userTable.id, found.id))
@@ -142,14 +155,34 @@ export async function getMeService(userId: string) {
       isActive:   userTable.isActive,
       lastLogin:  userTable.lastLogin,
       employeeId: userTable.employeeId,
+      totpEnabled: userTable.totpEnabled,
       createdAt:  userTable.createdAt,
+      employee: {
+        id:           employee.id,
+        nama:         employee.nama,
+        nrk:          employee.nrk,
+        nik:          employee.nik,
+        jabatan:      employee.jabatan,
+        jenisKelamin: employee.jenisKelamin,
+        nomorHp:      employee.nomorHp,
+        alamat:       employee.alamat,
+        fotoProfil:   employee.fotoProfil,
+      }
     })
     .from(userTable)
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
     .where(eq(userTable.id, userId))
     .limit(1)
 
   if (!found) throw new Error('User tidak ditemukan')
-  return found
+  
+  return {
+    ...found,
+    employee: found.employee?.id ? {
+      ...found.employee,
+      fotoProfil: buildFileUrl(found.employee.fotoProfil),
+    } : null,
+  }
 }
 
 // ─── Helper: relative time formatter ──────────────────────────────────────────
@@ -327,4 +360,110 @@ export async function clearAllNotificationsService(userId: string) {
         })
     }
   }
+}
+
+
+export async function verifyTotpLoginService(
+  fastify: FastifyInstance,
+  totpToken: string,
+  code: string
+) {
+  let decoded: any
+  try {
+    decoded = fastify.jwt.verify(totpToken)
+  } catch (err) {
+    throw new Error('Token 2FA kadaluwarsa atau tidak valid')
+  }
+
+  if (decoded.purpose !== 'totp_login') {
+    throw new Error('Tantangan tidak valid')
+  }
+
+  const userId = decoded.sub
+
+  const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
+  if (!user) throw new Error('User tidak ditemukan')
+  if (!user.isActive) throw new Error('Akun dinonaktifkan')
+  if (!user.totpSecret) throw new Error('Authenticator belum dikonfigurasi')
+
+  const valid = verifyTOTP(user.totpSecret, code)
+  if (!valid) {
+    throw new Error('Kode Authenticator salah atau kadaluwarsa')
+  }
+
+  // Update lastLogin
+  await db.update(userTable).set({ lastLogin: new Date() }).where(eq(userTable.id, user.id))
+
+  const accessToken  = fastify.jwt.sign({
+    sub:          user.id,
+    email:        user.email,
+    role:         user.role,
+    tokenVersion: user.tokenVersion,
+  })
+  const refreshTokenRaw = await createRefreshToken(user.id)
+
+  return {
+    accessToken,
+    refreshToken: refreshTokenRaw,
+    expiresIn:    config.jwt.expiresIn,
+    user: {
+      id:        user.id,
+      email:     user.email,
+      role:      user.role,
+      isActive:  user.isActive,
+      lastLogin: user.lastLogin,
+    },
+  }
+}
+
+export async function setupTotpService(userId: string) {
+  const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
+  if (!user) throw new Error('User tidak ditemukan')
+
+  const secret = generateTOTPSecret()
+  const keyURI = getTOTPKeyURI(user.email, secret)
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(keyURI)}`
+
+  return {
+    secret,
+    qrCodeUrl
+  }
+}
+
+export async function enableTotpService(userId: string, secret: string, code: string) {
+  const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
+  if (!user) throw new Error('User tidak ditemukan')
+
+  const valid = verifyTOTP(secret, code)
+  if (!valid) throw new Error('Kode verifikasi salah atau kadaluwarsa')
+
+  await db
+    .update(userTable)
+    .set({
+      totpSecret: secret,
+      totpEnabled: true
+    })
+    .where(eq(userTable.id, userId))
+
+  return { success: true }
+}
+
+export async function disableTotpService(userId: string, password?: string) {
+  const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
+  if (!user) throw new Error('User tidak ditemukan')
+
+  if (password) {
+    const valid = await verifyPassword(password, user.passwordHash)
+    if (!valid) throw new Error('Password salah')
+  }
+
+  await db
+    .update(userTable)
+    .set({
+      totpSecret: null,
+      totpEnabled: false
+    })
+    .where(eq(userTable.id, userId))
+
+  return { success: true }
 }

@@ -26,7 +26,7 @@ export const updateEmployeeSchema = createEmployeeSchema.partial()
 
 export const listEmployeeQuerySchema = z.object({
   page:             z.coerce.number().int().min(1).default(1),
-  limit:            z.coerce.number().int().min(1).max(200).default(2),
+  limit:            z.coerce.number().int().min(1).max(1000).default(20),
   search:           z.string().optional(), // cari nama / nrk / nik
   unitOrganisasiId: z.string().uuid().optional(),
   gradeId:          z.string().uuid().optional(),

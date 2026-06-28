@@ -58,7 +58,7 @@ export default async function employeeRoutes(fastify: FastifyInstance) {
     const file: MultipartFile | undefined = await request.file()
     if (!file) throw new Error('File foto tidak ditemukan dalam request')
 
-    const filename = await saveUploadedFile(file)
+    const filename = await saveUploadedFile(file, 'employees')
     const result   = await updateEmployeePhotoService(id, filename)
 
     return reply.send(ok(result))

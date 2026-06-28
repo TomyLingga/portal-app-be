@@ -13,12 +13,12 @@ const MAX_SIZE_MB  = 5
  * Nama file di-rename ke: {timestamp}_{random}_{ext}
  * Kembalikan nama file saja (bukan full path).
  */
-export async function saveUploadedFile(file: MultipartFile): Promise<string> {
+export async function saveUploadedFile(file: MultipartFile, subDir: string = ''): Promise<string> {
   if (!ALLOWED_MIME.includes(file.mimetype)) {
     throw new Error(`Tipe file tidak didukung. Hanya: ${ALLOWED_MIME.join(', ')}`)
   }
 
-  const uploadDir = path.resolve(config.upload.dir)
+  const uploadDir = path.join(path.resolve(config.upload.dir), subDir)
 
   // Buat folder uploads jika belum ada
   if (!fs.existsSync(uploadDir)) {
@@ -55,7 +55,7 @@ export async function saveUploadedFile(file: MultipartFile): Promise<string> {
     fs.createWriteStream(filepath),
   )
 
-  return filename
+  return subDir ? `${subDir}/${filename}` : filename
 }
 
 /**
