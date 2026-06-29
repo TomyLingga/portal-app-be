@@ -31,7 +31,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   })
 
   // GET /api/users/passkeys
-  fastify.get('/passkeys', { preHandler: adminOnly }, async (request, reply) => {
+  fastify.get('/passkeys', { preHandler: adminOnly }, async (_request, reply) => {
     const result = await listAllPasskeysService()
     return reply.send(ok(result))
   })
@@ -51,7 +51,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   })
 
   // GET /api/users/2fa
-  fastify.get('/2fa', { preHandler: adminOnly }, async (request, reply) => {
+  fastify.get('/2fa', { preHandler: adminOnly }, async (_request, reply) => {
     const result = await listUsers2faService()
     return reply.send(ok(result))
   })

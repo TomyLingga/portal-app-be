@@ -2,7 +2,7 @@
 import crypto           from 'crypto'
 import { eq, and }      from 'drizzle-orm'
 import { db }           from '../db'
-import { ssoToken, aplikasi, user as userTable, appUserAccess, activityLog } from '../db/schema'
+import { ssoToken, aplikasi, user as userTable, activityLog } from '../db/schema'
 import { config }       from '../config/env'
 
 /**

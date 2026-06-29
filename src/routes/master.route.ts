@@ -14,7 +14,7 @@ import { checkDomainStatus, checkDatabaseStatus, checkStorageStatus, checkSSLCer
  * Sends 400 response and returns false if any field is missing or empty.
  */
 function validateRequired(reply: FastifyReply, fields: Record<string, any>, errorMessage: string): boolean {
-  for (const [key, value] of Object.entries(fields)) {
+  for (const value of Object.values(fields)) {
     if (value === undefined || value === null || (typeof value === 'string' && !value.trim())) {
       reply.code(400).send({ success: false, error: errorMessage })
       return false
@@ -248,7 +248,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // GET /api/master/health
-  fastify.get('/health', { preHandler: authOnly }, async (request, reply) => {
+  fastify.get('/health', { preHandler: authOnly }, async (_request, reply) => {
     try {
       const uploadDir = path.resolve(config.upload.dir)
       

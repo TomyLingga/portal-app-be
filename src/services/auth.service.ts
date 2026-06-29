@@ -1,8 +1,8 @@
 // ─── Service: Auth ────────────────────────────────────────────────────────────
 import crypto            from 'crypto'
-import { eq, sql, and, desc, or, isNull } from 'drizzle-orm'
+import { eq, sql, and } from 'drizzle-orm'
 import { db }            from '../db'
-import { user as userTable, refreshToken as refreshTokenTable, ssoToken, aplikasi, activityLog, employee, userPasskey } from '../db/schema'
+import { user as userTable, refreshToken as refreshTokenTable, activityLog, employee } from '../db/schema'
 import { hashPassword, verifyPassword } from '../utils/hash'
 import { sendMail } from '../utils/mailer'
 import { LoginInput }    from '../validators/auth.validator'
@@ -206,18 +206,7 @@ export async function getMeService(userId: string) {
   }
 }
 
-// ─── Helper: relative time formatter ──────────────────────────────────────────
-function formatRelativeTime(date: Date): string {
-  const diffMs = Date.now() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMins / 60)
-  const diffDays = Math.floor(diffHours / 24)
 
-  if (diffDays > 0) return `${diffDays} hari lalu`
-  if (diffHours > 0) return `${diffHours} jam lalu`
-  if (diffMins > 0) return `${diffMins} menit lalu`
-  return 'Baru saja'
-}
 
 
 
