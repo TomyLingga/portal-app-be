@@ -28,8 +28,8 @@ export async function generatePasskeyRegistrationOptionsService(fastify: Fastify
   const existingPasskeys = await db.select().from(userPasskey).where(eq(userPasskey.userId, userId))
 
   const options = await generateRegistrationOptions({
-    rpName: 'PT Industri Nabati Lestari',
-    rpID: 'localhost',
+    rpName: config.webauthn.rpName,
+    rpID: config.webauthn.rpId,
     userID: Buffer.from(userId),
     userName: user.email,
     userDisplayName: displayName,
@@ -77,8 +77,8 @@ export async function verifyPasskeyRegistrationService(
   const verification = await verifyRegistrationResponse({
     response: registrationResponse,
     expectedChallenge,
-    expectedOrigin: ['http://localhost:3002', 'http://localhost:3001'],
-    expectedRPID: 'localhost',
+    expectedOrigin: config.webauthn.expectedOrigins,
+    expectedRPID: config.webauthn.rpId,
   })
 
   if (!verification.verified || !verification.registrationInfo) {
@@ -138,7 +138,7 @@ export async function generatePasskeyLoginOptionsService(fastify: FastifyInstanc
   }
 
   const options = await generateAuthenticationOptions({
-    rpID: 'localhost',
+    rpID: config.webauthn.rpId,
     userVerification: 'preferred',
     allowCredentials,
   })
@@ -196,8 +196,8 @@ export async function verifyPasskeyLoginService(
   const verification = await verifyAuthenticationResponse({
     response: loginResponse,
     expectedChallenge,
-    expectedOrigin: ['http://localhost:3052', 'http://localhost:3002', 'http://localhost:3001'],
-    expectedRPID: 'localhost',
+    expectedOrigin: config.webauthn.expectedOrigins,
+    expectedRPID: config.webauthn.rpId,
     credential: {
       id: loginResponse.id,
       publicKey: Buffer.from(passkey.publicKey, 'base64'),

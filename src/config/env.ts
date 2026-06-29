@@ -32,6 +32,11 @@ const envSchema = z.object({
   // Seed
   SEED_ADMIN_EMAIL:    z.string().email().default('admin@inl.co.id'),
   SEED_ADMIN_PASSWORD: z.string().min(6).default('Admin@123'),
+
+  // WebAuthn / Passkey
+  WEBAUTHN_RP_ID:            z.string().default('localhost'),
+  WEBAUTHN_RP_NAME:          z.string().default('PT Industri Nabati Lestari'),
+  WEBAUTHN_EXPECTED_ORIGINS: z.string().default('http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3052'),
 })
 
 const parsed = envSchema.safeParse(process.env)
@@ -77,4 +82,10 @@ export const config = {
     adminEmail:    env.SEED_ADMIN_EMAIL,
     adminPassword: env.SEED_ADMIN_PASSWORD,
   },
+  webauthn: {
+    rpId:            env.WEBAUTHN_RP_ID,
+    rpName:          env.WEBAUTHN_RP_NAME,
+    expectedOrigins: env.WEBAUTHN_EXPECTED_ORIGINS.split(',').map(o => o.trim()),
+  },
 } as const
+
