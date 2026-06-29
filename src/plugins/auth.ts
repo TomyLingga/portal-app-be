@@ -16,7 +16,8 @@ export default fp(async function authPlugin(fastify: FastifyInstance) {
     async function (request: FastifyRequest, reply: FastifyReply) {
       try {
         await request.jwtVerify()
-      } catch {
+      } catch (err: any) {
+        fastify.log.warn(`[Auth] JWT verification failed for request ${request.url}: ${err.message}`)
         return reply.code(401).send({ success: false, error: 'Unauthorized — token tidak valid atau expired' })
       }
 
@@ -29,12 +30,15 @@ export default fp(async function authPlugin(fastify: FastifyInstance) {
         .limit(1)
 
       if (!dbUser) {
+        fastify.log.warn(`[Auth] User not found in database for ID: ${payload.sub}`)
         return reply.code(401).send({ success: false, error: 'User tidak ditemukan' })
       }
       if (!dbUser.isActive) {
+        fastify.log.warn(`[Auth] Inactive user blocked: ${payload.sub}`)
         return reply.code(403).send({ success: false, error: 'Akun dinonaktifkan' })
       }
       if (dbUser.tokenVersion !== payload.tokenVersion) {
+        fastify.log.warn(`[Auth] Token version mismatch for user ${payload.sub}: DB has ${dbUser.tokenVersion}, payload has ${payload.tokenVersion}`)
         return reply.code(401).send({ success: false, error: 'Session sudah berakhir, silakan login ulang' })
       }
     }
