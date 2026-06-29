@@ -370,7 +370,7 @@ export async function forgotPasswordService(fastify: FastifyInstance, email: str
   console.log(`[forgotPasswordService] Reset link: ${resetLink}`)
   console.log(`[forgotPasswordService] Sending email via SMTP to: ${user.email}`)
 
-  await sendMail({
+  sendMail({
     to: user.email,
     subject: 'Reset Kata Sandi Portal INL',
     html: `
@@ -389,9 +389,12 @@ export async function forgotPasswordService(fastify: FastifyInstance, email: str
         <p style="font-size: 11px; color: #94a3b8; text-align: center;">PT. Industri Nabati Lestari — IT Division</p>
       </div>
     `
+  }).then(() => {
+    console.log(`[forgotPasswordService] ✅ Email sent successfully to ${user.email}`)
+  }).catch((err) => {
+    console.error(`[forgotPasswordService] ❌ Failed to send email to ${user.email}:`, err)
   })
 
-  console.log(`[forgotPasswordService] ✅ Email sent successfully to ${user.email}`)
   return { message: 'Link reset password telah dikirim ke email Anda.' }
 }
 
