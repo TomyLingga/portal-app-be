@@ -149,7 +149,15 @@ export async function grantAppService(userId: string, appId: string, grantedById
     .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
     .limit(1)
 
-  if (existing) throw new Error('User sudah memiliki akses ke aplikasi ini')
+  if (existing) {
+    // Jika sudah ada akses, update saja grantedById-nya
+    const [updated] = await db
+      .update(appUserAccess)
+      .set({ grantedById })
+      .where(eq(appUserAccess.id, existing.id))
+      .returning()
+    return updated
+  }
 
   const [created] = await db
     .insert(appUserAccess)

@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, or } from 'drizzle-orm'
 import { db } from '../db'
 import { user as userTable, employee, userPasskey, activityLog } from '../db/schema'
 import { config } from '../config/env'
@@ -88,9 +88,10 @@ export async function verifyPasskeyRegistrationService(
   const { credential } = verification.registrationInfo
   const { id: credentialID, publicKey: credentialPublicKey, counter } = credential
 
-  const credentialIdBase64 = typeof credentialID === 'string'
+  const rawCredentialIdBase64 = typeof credentialID === 'string'
     ? credentialID
     : Buffer.from(credentialID).toString('base64url')
+  const credentialIdBase64 = rawCredentialIdBase64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
   const publicKeyBase64 = Buffer.from(credentialPublicKey).toString('base64')
 
   // Save the passkey
@@ -106,10 +107,40 @@ export async function verifyPasskeyRegistrationService(
   return { success: true }
 }
 
-export async function generatePasskeyLoginOptionsService(fastify: FastifyInstance) {
+export async function generatePasskeyLoginOptionsService(fastify: FastifyInstance, email?: string) {
+  let allowCredentials: any[] | undefined = undefined
+
+  if (email && email.trim() !== '') {
+    const [user] = await db
+      .select()
+      .from(userTable)
+      .where(eq(userTable.email, email.trim()))
+      .limit(1)
+
+    if (!user) {
+      throw new Error('User dengan email tersebut tidak ditemukan')
+    }
+
+    const userPasskeys = await db
+      .select()
+      .from(userPasskey)
+      .where(eq(userPasskey.userId, user.id))
+
+    if (userPasskeys.length === 0) {
+      throw new Error('Email ini belum mendaftarkan Passkey')
+    }
+
+    allowCredentials = userPasskeys.map(p => ({
+      id: p.credentialId,
+      type: 'public-key' as const,
+      transports: p.transports ? JSON.parse(p.transports) : undefined,
+    }))
+  }
+
   const options = await generateAuthenticationOptions({
     rpID: 'localhost',
     userVerification: 'preferred',
+    allowCredentials,
   })
 
   const challengeToken = fastify.jwt.sign({
@@ -137,12 +168,25 @@ export async function verifyPasskeyLoginService(
   }
 
   const expectedChallenge = decoded.challenge
-  const credentialId = loginResponse.id
+  const rawCredentialId = loginResponse.id
+  const credentialId = typeof rawCredentialId === 'string'
+    ? rawCredentialId.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    : rawCredentialId
+
+  const alternativeId = typeof rawCredentialId === 'string'
+    ? rawCredentialId.replace(/\-/g, '+').replace(/_/g, '/')
+    : rawCredentialId
 
   const [passkey] = await db
     .select()
     .from(userPasskey)
-    .where(eq(userPasskey.credentialId, credentialId))
+    .where(
+      or(
+        eq(userPasskey.credentialId, rawCredentialId),
+        eq(userPasskey.credentialId, credentialId),
+        eq(userPasskey.credentialId, alternativeId)
+      )
+    )
     .limit(1)
 
   if (!passkey) {
@@ -155,7 +199,7 @@ export async function verifyPasskeyLoginService(
     expectedOrigin: ['http://localhost:3052', 'http://localhost:3002', 'http://localhost:3001'],
     expectedRPID: 'localhost',
     credential: {
-      id: passkey.credentialId,
+      id: loginResponse.id,
       publicKey: Buffer.from(passkey.publicKey, 'base64'),
       counter: passkey.counter,
       transports: passkey.transports ? JSON.parse(passkey.transports) : undefined,

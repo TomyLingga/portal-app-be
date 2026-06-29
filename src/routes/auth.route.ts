@@ -96,7 +96,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   // POST /api/auth/passkey/login/options
   fastify.post('/passkey/login/options', async (request, reply) => {
-    const result = await generatePasskeyLoginOptionsService(fastify)
+    const { email } = (request.body as { email?: string }) || {}
+    const result = await generatePasskeyLoginOptionsService(fastify, email)
     return reply.code(200).send(ok(result))
   })
 
