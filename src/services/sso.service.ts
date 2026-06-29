@@ -20,14 +20,16 @@ export async function generateSSOTokenService(userId: string, appId: string) {
   if (!app) throw new Error('Aplikasi tidak ditemukan atau tidak aktif')
   if (app.authMode !== 'sso') throw new Error('Aplikasi ini tidak menggunakan mode SSO')
 
-  // Cek user memiliki akses ke aplikasi ini
-  const [access] = await db
-    .select({ id: appUserAccess.id })
-    .from(appUserAccess)
-    .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
+  // Cek status user
+  const [u] = await db
+    .select({ role: userTable.role, isActive: userTable.isActive })
+    .from(userTable)
+    .where(eq(userTable.id, userId))
     .limit(1)
 
-  if (!access) throw new Error('Kamu tidak memiliki akses ke aplikasi ini')
+  if (!u || !u.isActive) {
+    throw new Error('User tidak aktif atau tidak ditemukan')
+  }
 
   // Parse expiry (misal '5m' → 5 * 60000 ms)
   const expMs = parseExpiry(config.sso.tokenExpiresIn)
