@@ -3,7 +3,7 @@ import { FastifyInstance, FastifyReply }   from 'fastify'
 import path from 'path'
 import { config } from '../config/env'
 import { db }                from '../db'
-import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade, refTipeUnit, refPenempatanArea } from '../db/schema'
+import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade, refTipeUnit, refPenempatanArea, refKategoriAplikasi } from '../db/schema'
 import { ok }                from '../utils/response'
 import { eq, desc }          from 'drizzle-orm'
 import { getMasterStatsService, getPaginatedLogsService } from '../services/master.service'
@@ -309,6 +309,43 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   fastify.delete('/penempatan-area/:id', { preHandler: authOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     await db.delete(refPenempatanArea).where(eq(refPenempatanArea.id, id))
+    return reply.send(ok({ deleted: true }))
+  })
+
+  // ─── CRUD: Kategori Aplikasi ────────────────────────────────────────────────
+  // GET /api/master/kategori-aplikasi
+  fastify.get('/kategori-aplikasi', { preHandler: authOnly }, async (_request, reply) => {
+    const rows = await db.select().from(refKategoriAplikasi).orderBy(refKategoriAplikasi.label)
+    return reply.send(ok(rows))
+  })
+
+  // POST /api/master/kategori-aplikasi
+  fastify.post('/kategori-aplikasi', { preHandler: authOnly }, async (request, reply) => {
+    const { kode, label } = request.body as { kode: string; label: string }
+    if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
+
+    const [row] = await db.insert(refKategoriAplikasi).values({ kode, label }).returning()
+    return reply.send(ok(row))
+  })
+
+  // PUT /api/master/kategori-aplikasi/:id
+  fastify.put('/kategori-aplikasi/:id', { preHandler: authOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { kode, label } = request.body as { kode: string; label: string }
+    if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
+
+    const [row] = await db
+      .update(refKategoriAplikasi)
+      .set({ kode, label })
+      .where(eq(refKategoriAplikasi.id, id))
+      .returning()
+    return reply.send(ok(row))
+  })
+
+  // DELETE /api/master/kategori-aplikasi/:id
+  fastify.delete('/kategori-aplikasi/:id', { preHandler: authOnly }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    await db.delete(refKategoriAplikasi).where(eq(refKategoriAplikasi.id, id))
     return reply.send(ok({ deleted: true }))
   })
 }

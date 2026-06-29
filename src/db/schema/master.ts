@@ -52,3 +52,11 @@ export const refPenempatanArea = pgTable('ref_penempatan_area', {
   longitude: varchar('longitude', { length: 50 }).notNull(),
   latitude:  varchar('latitude',  { length: 50 }).notNull(),
 })
+
+// Kategori Aplikasi
+export const refKategoriAplikasi = pgTable('ref_kategori_aplikasi', {
+  id:    uuid('id').primaryKey().$defaultFn(genUUID),
+  kode:  varchar('kode',  { length: 50 }).notNull().unique(),
+  label: varchar('label', { length: 100 }).notNull(),
+})
+

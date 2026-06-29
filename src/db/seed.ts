@@ -10,6 +10,7 @@ import {
   refGrade,
   refTipeUnit,
   refPenempatanArea,
+  refKategoriAplikasi,
   user,
   unitOrganisasi,
   employee,
@@ -48,6 +49,7 @@ async function seed() {
   await db.delete(refGrade)
   await db.delete(refTipeUnit)
   await db.delete(refPenempatanArea)
+  await db.delete(refKategoriAplikasi)
   console.log('   ✅ Clean slate ready\n')
 
   // ── Ref Status Karyawan ────────────────────────────────────────────────────
@@ -138,6 +140,22 @@ async function seed() {
   for (const data of penempatanAreaData) {
     await db.insert(refPenempatanArea).values(data).onConflictDoNothing()
   }
+
+  // ── Ref Kategori Aplikasi ──────────────────────────────────────────────────
+  console.log('   → ref_kategori_aplikasi')
+  const kategoriAplikasiData = [
+    { kode: 'PRODUKTIVITAS', label: 'Produktivitas' },
+    { kode: 'KOMUNIKASI',    label: 'Komunikasi' },
+    { kode: 'OPERASIONAL',   label: 'Operasional' },
+    { kode: 'SDM',           label: 'SDM' },
+    { kode: 'MEDIA',         label: 'Media' },
+    { kode: 'KEUANGAN',      label: 'Keuangan' },
+    { kode: 'LAINNYA',       label: 'Lainnya' },
+  ]
+  for (const data of kategoriAplikasiData) {
+    await db.insert(refKategoriAplikasi).values(data).onConflictDoNothing()
+  }
+
 
   // ── Unit Organisasi ────────────────────────────────────────────────────────
   console.log('   → unit_organisasi')
