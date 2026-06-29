@@ -11,9 +11,10 @@ const envSchema = z.object({
   DB_PASSWORD: z.string().default(''),
 
   // App
-  PORT:     z.string().default('3000'),
-  HOST:     z.string().default('0.0.0.0'),
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT:         z.string().default('3000'),
+  HOST:         z.string().default('0.0.0.0'),
+  NODE_ENV:     z.enum(['development', 'production', 'test']).default('development'),
+  FRONTEND_URL: z.string().url().default('http://localhost:3002'),
 
   // JWT
   JWT_SECRET:     z.string().min(32, 'JWT_SECRET harus minimal 32 karakter'),
@@ -37,6 +38,16 @@ const envSchema = z.object({
   WEBAUTHN_RP_ID:            z.string().default('localhost'),
   WEBAUTHN_RP_NAME:          z.string().default('PT Industri Nabati Lestari'),
   WEBAUTHN_EXPECTED_ORIGINS: z.string().default('http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3052'),
+
+  // Mail
+  MAIL_MAILER:       z.string().default('smtp'),
+  MAIL_HOST:         z.string().default('sandbox.smtp.mailtrap.io'),
+  MAIL_PORT:         z.string().default('2525'),
+  MAIL_USERNAME:     z.string().default(''),
+  MAIL_PASSWORD:     z.string().default(''),
+  MAIL_ENCRYPTION:   z.string().default('tls'),
+  MAIL_FROM_ADDRESS: z.string().email().default('info@inl.co.id'),
+  MAIL_FROM_NAME:    z.string().default('Portal INL'),
 })
 
 const parsed = envSchema.safeParse(process.env)
@@ -60,9 +71,10 @@ export const config = {
     password: env.DB_PASSWORD,
   },
   app: {
-    port:    Number(env.PORT),
-    host:    env.HOST,
-    nodeEnv: env.NODE_ENV,
+    port:        Number(env.PORT),
+    host:        env.HOST,
+    nodeEnv:     env.NODE_ENV,
+    frontendUrl: env.FRONTEND_URL,
   },
   jwt: {
     secret:    env.JWT_SECRET,
@@ -86,6 +98,15 @@ export const config = {
     rpId:            env.WEBAUTHN_RP_ID,
     rpName:          env.WEBAUTHN_RP_NAME,
     expectedOrigins: env.WEBAUTHN_EXPECTED_ORIGINS.split(',').map(o => o.trim()),
+  },
+  mail: {
+    host:        env.MAIL_HOST,
+    port:        Number(env.MAIL_PORT),
+    encryption:  env.MAIL_ENCRYPTION,
+    username:    env.MAIL_USERNAME,
+    password:    env.MAIL_PASSWORD,
+    fromAddress: env.MAIL_FROM_ADDRESS,
+    fromName:    env.MAIL_FROM_NAME,
   },
 } as const
 

@@ -4,6 +4,7 @@ import { eq, sql, and, desc, or, isNull } from 'drizzle-orm'
 import { db }            from '../db'
 import { user as userTable, refreshToken as refreshTokenTable, ssoToken, aplikasi, activityLog, employee, userPasskey } from '../db/schema'
 import { hashPassword, verifyPassword } from '../utils/hash'
+import { sendMail } from '../utils/mailer'
 import { LoginInput }    from '../validators/auth.validator'
 import { config }        from '../config/env'
 import { buildFileUrl }  from '../utils/file'
@@ -338,3 +339,94 @@ export async function disableTotpService(userId: string, password?: string) {
 
   return { success: true }
 }
+
+export async function forgotPasswordService(fastify: FastifyInstance, email: string) {
+  console.log(`\n[forgotPasswordService] Looking up email: "${email}"`)
+
+  const [user] = await db
+    .select()
+    .from(userTable)
+    .where(eq(userTable.email, email))
+    .limit(1)
+
+  if (!user) {
+    console.warn(`[forgotPasswordService] ⚠️  Email "${email}" NOT FOUND in database — no email sent`)
+    return { message: 'Link reset password telah dikirim jika email terdaftar.' }
+  }
+
+  console.log(`[forgotPasswordService] ✅ User found: id=${user.id}, email=${user.email}`)
+
+  const token = fastify.jwt.sign(
+    {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion
+    },
+    { expiresIn: '15m' }
+  )
+
+  const resetLink = `${config.app.frontendUrl}/reset-password?token=${token}`
+  console.log(`[forgotPasswordService] Reset link: ${resetLink}`)
+  console.log(`[forgotPasswordService] Sending email via SMTP to: ${user.email}`)
+
+  await sendMail({
+    to: user.email,
+    subject: 'Reset Kata Sandi Portal INL',
+    html: `
+      <div style="font-family: sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #f1f5f9; border-radius: 12px; background-color: #ffffff;">
+        <h2 style="color: #f59e0b; font-size: 20px; font-weight: 800; border-bottom: 2px solid #f59e0b; padding-bottom: 10px; margin-bottom: 20px;">Reset Password Portal INL</h2>
+        <p style="font-size: 14px; line-height: 1.6; color: #334155;">Halo,</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #334155;">Kami menerima permintaan untuk mengatur ulang kata sandi akun Portal PT Industri Nabati Lestari Anda.</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #334155;">Silakan klik tombol di bawah ini untuk mengatur ulang kata sandi Anda. Tautan ini hanya berlaku selama 15 menit.</p>
+        <div style="margin: 30px 0; text-align: center;">
+          <a href="${resetLink}" style="background-color: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-size: 14px; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.2);">Reset Password</a>
+        </div>
+        <p style="font-size: 14px; line-height: 1.6; color: #334155;">Jika tombol di atas tidak berfungsi, Anda juga dapat menyalin tautan berikut ke browser Anda:</p>
+        <p style="font-size: 12px; line-height: 1.6; color: #64748b; word-break: break-all;"><a href="${resetLink}" style="color: #3b82f6;">${resetLink}</a></p>
+        <p style="font-size: 14px; line-height: 1.6; color: #334155; mt-4;">Jika Anda tidak meminta ini, silakan abaikan email ini.</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+        <p style="font-size: 11px; color: #94a3b8; text-align: center;">PT. Industri Nabati Lestari — IT Division</p>
+      </div>
+    `
+  })
+
+  console.log(`[forgotPasswordService] ✅ Email sent successfully to ${user.email}`)
+  return { message: 'Link reset password telah dikirim ke email Anda.' }
+}
+
+export async function resetPasswordService(fastify: FastifyInstance, token: string, passwordNew: string) {
+  let decoded: { sub: string; email: string; role: 'user' | 'super_admin'; tokenVersion: number }
+  try {
+    decoded = fastify.jwt.verify(token) as any
+  } catch (err) {
+    throw new Error('Tautan reset password tidak valid atau telah kedaluwarsa')
+  }
+
+  const [user] = await db
+    .select()
+    .from(userTable)
+    .where(eq(userTable.email, decoded.email))
+    .limit(1)
+
+  if (!user) {
+    throw new Error('User tidak ditemukan')
+  }
+
+  if (user.tokenVersion !== decoded.tokenVersion) {
+    throw new Error('Tautan reset password ini sudah digunakan')
+  }
+
+  const hash = await hashPassword(passwordNew)
+  await db
+    .update(userTable)
+    .set({
+      passwordHash: hash,
+      tokenVersion: user.tokenVersion + 1,
+      updatedAt: new Date()
+    })
+    .where(eq(userTable.id, user.id))
+
+  return { message: 'Kata sandi berhasil diperbarui' }
+}
+

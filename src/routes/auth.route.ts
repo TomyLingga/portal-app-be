@@ -11,6 +11,8 @@ import {
   setupTotpService,
   enableTotpService,
   disableTotpService,
+  forgotPasswordService,
+  resetPasswordService,
 } from '../services/auth.service'
 import {
   generatePasskeyRegistrationOptionsService,
@@ -195,6 +197,36 @@ export default async function authRoutes(fastify: FastifyInstance) {
       // Ignore logging error
     }
 
+    return reply.code(200).send(ok(result))
+  })
+
+  // POST /api/auth/forgot-password
+  fastify.post('/forgot-password', async (request, reply) => {
+    const { email } = request.body as { email: string }
+    fastify.log.info(`[forgot-password] Request received for email: ${email}`)
+
+    if (!email) {
+      return reply.code(400).send(err('Email wajib diisi'))
+    }
+
+    try {
+      const result = await forgotPasswordService(fastify, email)
+      fastify.log.info(`[forgot-password] Service result: ${JSON.stringify(result)}`)
+      return reply.code(200).send(ok(result))
+    } catch (e: any) {
+      fastify.log.error(`[forgot-password] ERROR: ${e.message}`)
+      fastify.log.error(e)
+      return reply.code(500).send(err(`Gagal mengirim email: ${e.message}`))
+    }
+  })
+
+  // POST /api/auth/reset-password
+  fastify.post('/reset-password', async (request, reply) => {
+    const { token, password } = request.body as { token: string; password?: string }
+    if (!token || !password) {
+      return reply.code(400).send(err('Token dan password wajib diisi'))
+    }
+    const result = await resetPasswordService(fastify, token, password)
     return reply.code(200).send(ok(result))
   })
 }
