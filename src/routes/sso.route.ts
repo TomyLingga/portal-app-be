@@ -86,4 +86,17 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
 
     return reply.send(ok(rows))
   })
+
+  /**
+   * GET /api/sso/grades
+   * Endpoint internal untuk aplikasi SSO client seperti MeeTrip agar bisa mengambil
+   * data grade dari Portal.
+   */
+  fastify.get('/grades', async (request, reply) => {
+    if (request.headers['x-internal'] !== '1') {
+      return reply.code(403).send({ success: false, error: 'Forbidden' })
+    }
+    const rows = await db.select().from(refGrade).orderBy(refGrade.level)
+    return reply.send(ok(rows))
+  })
 }
