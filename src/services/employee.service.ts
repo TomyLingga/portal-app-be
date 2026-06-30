@@ -1,7 +1,7 @@
 // ─── Service: Employee ────────────────────────────────────────────────────────
 import { eq, ilike, and, count, or, SQL } from 'drizzle-orm'
 import { db }            from '../db'
-import { employee }      from '../db/schema'
+import { employee, activityLog }      from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import { buildFileUrl, deleteFile }       from '../utils/file'
 import type { CreateEmployeeInput, UpdateEmployeeInput, ListEmployeeQuery } from '../validators/employee.validator'
@@ -20,10 +20,12 @@ export async function listEmployeesService(query: ListEmployeeQuery) {
   if (query.search) {
     conditions.push(
       or(
+        ilike(employee.nrk, `%${query.search}%`),
+        ilike(employee.nik, `%${query.search}%`),
         ilike(employee.nama, `%${query.search}%`),
-        ilike(employee.nrk,  `%${query.search}%`),
-        ilike(employee.nik,  `%${query.search}%`),
-      )!
+        ilike(employee.jabatan, `%${query.search}%`),
+        ilike(employee.tempatLahir, `%${query.search}%`)
+      ) as SQL
     )
   }
   if (query.unitOrganisasiId) conditions.push(eq(employee.unitOrganisasiId, query.unitOrganisasiId))
@@ -59,7 +61,7 @@ export async function getEmployeeByIdService(id: string) {
   return withFileUrl(found)
 }
 
-export async function createEmployeeService(input: CreateEmployeeInput) {
+export async function createEmployeeService(input: CreateEmployeeInput, userId: string) {
   // Cek nrk & nik duplikat
   const [dupNrk] = await db.select({ id: employee.id }).from(employee).where(eq(employee.nrk, input.nrk)).limit(1)
   if (dupNrk) throw new Error('NRK sudah terdaftar')
@@ -78,13 +80,21 @@ export async function createEmployeeService(input: CreateEmployeeInput) {
       pendidikanTerakhirId: input.pendidikanTerakhirId ?? null,
       statusPernikahanId:   input.statusPernikahanId   ?? null,
       penempatanAreaId:     input.penempatanAreaId     ?? null,
+      agama:                input.agama                ?? null,
     })
     .returning()
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'create_employee',
+    details: `Menambahkan karyawan baru: ${created.nama} (NRK: ${created.nrk})`,
+  })
 
   return withFileUrl(created)
 }
 
-export async function updateEmployeeService(id: string, input: UpdateEmployeeInput) {
+export async function updateEmployeeService(id: string, input: UpdateEmployeeInput, userId: string) {
   const [existing] = await db
     .select({ id: employee.id })
     .from(employee)
@@ -99,10 +109,17 @@ export async function updateEmployeeService(id: string, input: UpdateEmployeeInp
     .where(eq(employee.id, id))
     .returning()
 
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'update_employee',
+    details: `Memperbarui data karyawan: ${updated.nama} (NRK: ${updated.nrk})`,
+  })
+
   return withFileUrl(updated)
 }
 
-export async function updateEmployeePhotoService(id: string, filename: string) {
+export async function updateEmployeePhotoService(id: string, filename: string, userId: string) {
   const [existing] = await db
     .select({ id: employee.id, fotoProfil: employee.fotoProfil })
     .from(employee)
@@ -118,14 +135,21 @@ export async function updateEmployeePhotoService(id: string, filename: string) {
     .update(employee)
     .set({ fotoProfil: filename, updatedAt: new Date() })
     .where(eq(employee.id, id))
-    .returning({ fotoProfil: employee.fotoProfil })
+    .returning({ fotoProfil: employee.fotoProfil, nama: employee.nama, nrk: employee.nrk })
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'update_employee_photo',
+    details: `Memperbarui foto profil karyawan: ${updated.nama} (NRK: ${updated.nrk})`,
+  })
 
   return { fotoUrl: buildFileUrl(updated.fotoProfil) }
 }
 
-export async function deleteEmployeeService(id: string) {
+export async function deleteEmployeeService(id: string, userId: string) {
   const [existing] = await db
-    .select({ id: employee.id, fotoProfil: employee.fotoProfil })
+    .select({ id: employee.id, fotoProfil: employee.fotoProfil, nama: employee.nama, nrk: employee.nrk })
     .from(employee)
     .where(eq(employee.id, id))
     .limit(1)
@@ -136,4 +160,11 @@ export async function deleteEmployeeService(id: string) {
   if (existing.fotoProfil) deleteFile(existing.fotoProfil)
 
   await db.delete(employee).where(eq(employee.id, id))
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'delete_employee',
+    details: `Menghapus karyawan: ${existing.nama} (NRK: ${existing.nrk})`,
+  })
 }

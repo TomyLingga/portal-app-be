@@ -42,20 +42,20 @@ export default async function organisasiRoutes(fastify: FastifyInstance) {
   // POST /api/org/unit
   fastify.post('/unit', { preHandler: adminOnly }, async (request, reply) => {
     const input = createUnitOrganisasiSchema.parse(request.body)
-    return reply.code(201).send(ok(await createUnitOrganisasiService(input)))
+    return reply.code(201).send(ok(await createUnitOrganisasiService(input, request.user.sub)))
   })
 
   // PUT /api/org/unit/:id
   fastify.put('/unit/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const input  = updateUnitOrganisasiSchema.parse(request.body)
-    return reply.send(ok(await updateUnitOrganisasiService(id, input)))
+    return reply.send(ok(await updateUnitOrganisasiService(id, input, request.user.sub)))
   })
 
   // DELETE /api/org/unit/:id
   fastify.delete('/unit/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await deleteUnitOrganisasiService(id)
+    await deleteUnitOrganisasiService(id, request.user.sub)
     return reply.code(204).send()
   })
 }

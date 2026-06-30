@@ -26,7 +26,7 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
   // POST /api/apps
   fastify.post('/', { preHandler: adminOnly }, async (request, reply) => {
     const input  = createAplikasiSchema.parse(request.body)
-    const result = await createAplikasiService(input)
+    const result = await createAplikasiService(input, request.user.sub)
     return reply.code(201).send(ok(result))
   })
 
@@ -40,13 +40,13 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
   fastify.put('/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const input  = updateAplikasiSchema.parse(request.body)
-    return reply.send(ok(await updateAplikasiService(id, input)))
+    return reply.send(ok(await updateAplikasiService(id, input, request.user.sub)))
   })
 
   // DELETE /api/apps/:id
   fastify.delete('/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await deleteAplikasiService(id)
+    await deleteAplikasiService(id, request.user.sub)
     return reply.code(204).send()
   })
 
@@ -66,7 +66,7 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
     if (!file) throw new Error('File icon tidak ditemukan dalam request')
 
     const filename = await saveUploadedFile(file, 'apps')
-    const result   = await updateAplikasiIconService(id, filename)
+    const result   = await updateAplikasiIconService(id, filename, request.user.sub)
 
     return reply.send(ok(result))
   })

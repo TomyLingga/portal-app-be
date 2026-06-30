@@ -26,6 +26,7 @@ export const employee = pgTable('employee', {
   statusPernikahanId:   uuid('status_pernikahan_id').references(() => refStatusPernikahan.id),
   penempatanAreaId:     uuid('penempatan_area_id').references(() => refPenempatanArea.id),
   nomorHp:              varchar('nomor_hp',  { length: 20  }),
+  agama:                varchar('agama',     { length: 50  }),
   alamat:               text('alamat'),
   isActive:             boolean('is_active').notNull().default(true),
   createdAt:            timestamp('created_at').notNull().defaultNow(),

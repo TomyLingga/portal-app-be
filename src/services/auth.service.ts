@@ -306,6 +306,13 @@ export async function enableTotpService(userId: string, secret: string, code: st
     })
     .where(eq(userTable.id, userId))
 
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'enable_totp',
+    details: 'Mengaktifkan Two-Factor Authentication (2FA) / Google Authenticator',
+  })
+
   return { success: true }
 }
 
@@ -325,6 +332,13 @@ export async function disableTotpService(userId: string, password?: string) {
       totpEnabled: false
     })
     .where(eq(userTable.id, userId))
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'disable_totp',
+    details: 'Menonaktifkan Two-Factor Authentication (2FA) / Google Authenticator',
+  })
 
   return { success: true }
 }

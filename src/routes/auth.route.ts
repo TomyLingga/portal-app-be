@@ -184,7 +184,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
 
     const filename = await saveUploadedFile(file, 'employees')
-    const result   = await updateEmployeePhotoService(user.employeeId, filename)
+    const result   = await updateEmployeePhotoService(user.employeeId, filename, request.user.sub)
 
     // Log activity
     try {

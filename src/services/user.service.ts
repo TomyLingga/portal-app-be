@@ -1,7 +1,7 @@
 // ─── Service: User ────────────────────────────────────────────────────────────
 import { eq, ilike, and, count, SQL } from 'drizzle-orm'
 import { db }              from '../db'
-import { user as userTable, appUserAccess, aplikasi, employee, userPasskey } from '../db/schema'
+import { user as userTable, appUserAccess, aplikasi, employee, userPasskey, activityLog } from '../db/schema'
 import { hashPassword }    from '../utils/hash'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type { CreateUserInput, UpdateUserInput, ListUserQuery } from '../validators/user.validator'
@@ -62,7 +62,7 @@ export async function getUserByIdService(id: string) {
   return found
 }
 
-export async function createUserService(input: CreateUserInput) {
+export async function createUserService(input: CreateUserInput, adminId: string) {
   // Cek email duplikat
   const [existing] = await db
     .select({ id: userTable.id })
@@ -91,12 +91,19 @@ export async function createUserService(input: CreateUserInput) {
       createdAt:  userTable.createdAt,
     })
 
+  // Log activity
+  await db.insert(activityLog).values({
+    userId: adminId,
+    action: 'create_user',
+    details: `Menambahkan pengguna baru: ${created.email} (Role: ${created.role})`,
+  })
+
   return created
 }
 
-export async function updateUserService(id: string, input: UpdateUserInput) {
+export async function updateUserService(id: string, input: UpdateUserInput, adminId: string) {
   const [existing] = await db
-    .select({ id: userTable.id })
+    .select({ id: userTable.id, email: userTable.email })
     .from(userTable)
     .where(eq(userTable.id, id))
     .limit(1)
@@ -126,12 +133,19 @@ export async function updateUserService(id: string, input: UpdateUserInput) {
       updatedAt:  userTable.updatedAt,
     })
 
+  // Log activity
+  await db.insert(activityLog).values({
+    userId: adminId,
+    action: 'update_user',
+    details: `Memperbarui data pengguna: ${updated.email}`,
+  })
+
   return updated
 }
 
-export async function deleteUserService(id: string) {
+export async function deleteUserService(id: string, adminId: string) {
   const [existing] = await db
-    .select({ id: userTable.id })
+    .select({ id: userTable.id, email: userTable.email })
     .from(userTable)
     .where(eq(userTable.id, id))
     .limit(1)
@@ -139,6 +153,13 @@ export async function deleteUserService(id: string) {
   if (!existing) throw new Error('User tidak ditemukan')
 
   await db.delete(userTable).where(eq(userTable.id, id))
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId: adminId,
+    action: 'delete_user',
+    details: `Menghapus pengguna: ${existing.email}`,
+  })
 }
 
 export async function grantAppService(userId: string, appId: string, grantedById: string) {
@@ -149,6 +170,7 @@ export async function grantAppService(userId: string, appId: string, grantedById
     .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
     .limit(1)
 
+  let result
   if (existing) {
     // Jika sudah ada akses, update saja grantedById-nya
     const [updated] = await db
@@ -156,18 +178,29 @@ export async function grantAppService(userId: string, appId: string, grantedById
       .set({ grantedById })
       .where(eq(appUserAccess.id, existing.id))
       .returning()
-    return updated
+    result = updated
+  } else {
+    const [created] = await db
+      .insert(appUserAccess)
+      .values({ userId, appId, grantedById })
+      .returning()
+    result = created
   }
 
-  const [created] = await db
-    .insert(appUserAccess)
-    .values({ userId, appId, grantedById })
-    .returning()
+  const [app] = await db.select({ nama: aplikasi.nama }).from(aplikasi).where(eq(aplikasi.id, appId)).limit(1)
+  const [user] = await db.select({ email: userTable.email }).from(userTable).where(eq(userTable.id, userId)).limit(1)
+  if (app && user) {
+    await db.insert(activityLog).values({
+      userId: grantedById,
+      action: 'grant_app',
+      details: `Memberikan akses aplikasi "${app.nama}" ke pengguna ${user.email}`,
+    })
+  }
 
-  return created
+  return result
 }
 
-export async function revokeAppService(userId: string, appId: string) {
+export async function revokeAppService(userId: string, appId: string, adminId: string) {
   const [existing] = await db
     .select({ id: appUserAccess.id })
     .from(appUserAccess)
@@ -179,6 +212,16 @@ export async function revokeAppService(userId: string, appId: string) {
   await db
     .delete(appUserAccess)
     .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
+
+  const [app] = await db.select({ nama: aplikasi.nama }).from(aplikasi).where(eq(aplikasi.id, appId)).limit(1)
+  const [user] = await db.select({ email: userTable.email }).from(userTable).where(eq(userTable.id, userId)).limit(1)
+  if (app && user) {
+    await db.insert(activityLog).values({
+      userId: adminId,
+      action: 'revoke_app',
+      details: `Mencabut akses aplikasi "${app.nama}" dari pengguna ${user.email}`,
+    })
+  }
 }
 
 export async function getUserAppsService(userId: string) {
@@ -224,20 +267,40 @@ export async function listAllPasskeysService() {
     .orderBy(userPasskey.createdAt)
 }
 
-export async function deletePasskeyAdminService(id: string) {
+export async function deletePasskeyAdminService(id: string, adminId: string) {
   const [deleted] = await db
     .delete(userPasskey)
     .where(eq(userPasskey.id, id))
     .returning()
   if (!deleted) throw new Error('Passkey tidak ditemukan')
+
+  const [user] = await db.select({ email: userTable.email }).from(userTable).where(eq(userTable.id, deleted.userId)).limit(1)
+  const userEmail = user ? user.email : 'Unknown User'
+
+  await db.insert(activityLog).values({
+    userId: adminId,
+    action: 'delete_passkey_admin',
+    details: `Menghapus passkey "${deleted.name}" milik pengguna ${userEmail} (Admin Action)`,
+  })
+
   return deleted
 }
 
-export async function deleteAllUserPasskeysService(userId: string) {
+export async function deleteAllUserPasskeysService(userId: string, adminId: string) {
   const deleted = await db
     .delete(userPasskey)
     .where(eq(userPasskey.userId, userId))
     .returning()
+
+  const [user] = await db.select({ email: userTable.email }).from(userTable).where(eq(userTable.id, userId)).limit(1)
+  const userEmail = user ? user.email : 'Unknown User'
+
+  await db.insert(activityLog).values({
+    userId: adminId,
+    action: 'delete_all_passkeys_admin',
+    details: `Menghapus seluruh passkey milik pengguna ${userEmail} (Admin Action)`,
+  })
+
   return deleted
 }
 
@@ -259,7 +322,7 @@ export async function listUsers2faService() {
     .orderBy(userTable.email)
 }
 
-export async function disableUser2faService(userId: string) {
+export async function disableUser2faService(userId: string, adminId: string) {
   const [updated] = await db
     .update(userTable)
     .set({
@@ -269,5 +332,12 @@ export async function disableUser2faService(userId: string) {
     .where(eq(userTable.id, userId))
     .returning()
   if (!updated) throw new Error('User tidak ditemukan')
+
+  await db.insert(activityLog).values({
+    userId: adminId,
+    action: 'disable_totp_admin',
+    details: `Menonaktifkan Two-Factor Authentication (2FA) milik pengguna ${updated.email} (Admin Action)`,
+  })
+
   return updated
 }

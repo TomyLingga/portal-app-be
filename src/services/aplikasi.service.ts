@@ -32,16 +32,21 @@ export async function getAplikasiByIdService(id: string) {
   return found
 }
 
-export async function createAplikasiService(input: CreateAplikasiInput) {
+export async function createAplikasiService(input: CreateAplikasiInput, userId: string) {
   const [created] = await db.insert(aplikasi).values(input).returning()
 
-
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'create_aplikasi',
+    details: `Menambahkan aplikasi baru: "${created.nama}"`,
+  })
 
   return created
 }
 
-export async function updateAplikasiService(id: string, input: UpdateAplikasiInput) {
-  const [existing] = await db.select({ id: aplikasi.id }).from(aplikasi).where(eq(aplikasi.id, id)).limit(1)
+export async function updateAplikasiService(id: string, input: UpdateAplikasiInput, userId: string) {
+  const [existing] = await db.select({ id: aplikasi.id, nama: aplikasi.nama }).from(aplikasi).where(eq(aplikasi.id, id)).limit(1)
   if (!existing) throw new Error('Aplikasi tidak ditemukan')
 
   const [updated] = await db
@@ -50,11 +55,18 @@ export async function updateAplikasiService(id: string, input: UpdateAplikasiInp
     .where(eq(aplikasi.id, id))
     .returning()
 
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'update_aplikasi',
+    details: `Memperbarui aplikasi: "${updated.nama}"`,
+  })
+
   return updated
 }
 
-export async function deleteAplikasiService(id: string) {
-  const [existing] = await db.select({ id: aplikasi.id, icon: aplikasi.icon }).from(aplikasi).where(eq(aplikasi.id, id)).limit(1)
+export async function deleteAplikasiService(id: string, userId: string) {
+  const [existing] = await db.select({ id: aplikasi.id, icon: aplikasi.icon, nama: aplikasi.nama }).from(aplikasi).where(eq(aplikasi.id, id)).limit(1)
   if (!existing) throw new Error('Aplikasi tidak ditemukan')
 
   if (existing.icon && (existing.icon.includes('/') || existing.icon.includes('.'))) {
@@ -62,11 +74,18 @@ export async function deleteAplikasiService(id: string) {
   }
 
   await db.delete(aplikasi).where(eq(aplikasi.id, id))
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'delete_aplikasi',
+    details: `Menghapus aplikasi: "${existing.nama}"`,
+  })
 }
 
-export async function updateAplikasiIconService(id: string, filename: string) {
+export async function updateAplikasiIconService(id: string, filename: string, userId: string) {
   const [existing] = await db
-    .select({ id: aplikasi.id, icon: aplikasi.icon })
+    .select({ id: aplikasi.id, icon: aplikasi.icon, nama: aplikasi.nama })
     .from(aplikasi)
     .where(eq(aplikasi.id, id))
     .limit(1)
@@ -82,7 +101,14 @@ export async function updateAplikasiIconService(id: string, filename: string) {
     .update(aplikasi)
     .set({ icon: filename, updatedAt: new Date() })
     .where(eq(aplikasi.id, id))
-    .returning({ icon: aplikasi.icon })
+    .returning({ icon: aplikasi.icon, nama: aplikasi.nama })
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'update_aplikasi_icon',
+    details: `Memperbarui icon aplikasi: "${updated.nama}"`,
+  })
 
   return { iconUrl: buildFileUrl(updated.icon) }
 }

@@ -60,3 +60,11 @@ export const refKategoriAplikasi = pgTable('ref_kategori_aplikasi', {
   label: varchar('label', { length: 100 }).notNull(),
 })
 
+// Agama
+export const refAgama = pgTable('ref_agama', {
+  id:    uuid('id').primaryKey().$defaultFn(genUUID),
+  kode:  varchar('kode',  { length: 20  }).notNull().unique(),
+  label: varchar('label', { length: 100 }).notNull(),
+})
+
+

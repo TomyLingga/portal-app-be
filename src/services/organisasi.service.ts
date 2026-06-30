@@ -1,7 +1,7 @@
 // ─── Service: Organisasi (Unit Organisasi — hierarki) ──────────────────────────
 import { eq, ilike, and, count, SQL } from 'drizzle-orm'
 import { db }              from '../db'
-import { unitOrganisasi }  from '../db/schema'
+import { unitOrganisasi, activityLog }  from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type {
   CreateUnitOrganisasiInput, UpdateUnitOrganisasiInput,
@@ -75,7 +75,7 @@ export async function getTreeService() {
   return roots
 }
 
-export async function createUnitOrganisasiService(input: CreateUnitOrganisasiInput) {
+export async function createUnitOrganisasiService(input: CreateUnitOrganisasiInput, userId: string) {
   const [dup] = await db.select({ id: unitOrganisasi.id }).from(unitOrganisasi).where(eq(unitOrganisasi.kode, input.kode)).limit(1)
   if (dup) throw new Error('Kode unit organisasi sudah digunakan')
 
@@ -89,10 +89,18 @@ export async function createUnitOrganisasiService(input: CreateUnitOrganisasiInp
     ...input,
     parentId: input.parentId ?? null,
   }).returning()
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'create_unit',
+    details: `Menambahkan unit organisasi baru: "${created.nama}" (Kode: ${created.kode})`,
+  })
+
   return created
 }
 
-export async function updateUnitOrganisasiService(id: string, input: UpdateUnitOrganisasiInput) {
+export async function updateUnitOrganisasiService(id: string, input: UpdateUnitOrganisasiInput, userId: string) {
   const [existing] = await db.select({ id: unitOrganisasi.id }).from(unitOrganisasi).where(eq(unitOrganisasi.id, id)).limit(1)
   if (!existing) throw new Error('Unit organisasi tidak ditemukan')
 
@@ -100,11 +108,19 @@ export async function updateUnitOrganisasiService(id: string, input: UpdateUnitO
   if (input.parentId === id) throw new Error('Unit tidak bisa menjadi parent dari dirinya sendiri')
 
   const [updated] = await db.update(unitOrganisasi).set(input).where(eq(unitOrganisasi.id, id)).returning()
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'update_unit',
+    details: `Memperbarui unit organisasi: "${updated.nama}" (Kode: ${updated.kode})`,
+  })
+
   return updated
 }
 
-export async function deleteUnitOrganisasiService(id: string) {
-  const [existing] = await db.select({ id: unitOrganisasi.id }).from(unitOrganisasi).where(eq(unitOrganisasi.id, id)).limit(1)
+export async function deleteUnitOrganisasiService(id: string, userId: string) {
+  const [existing] = await db.select({ id: unitOrganisasi.id, nama: unitOrganisasi.nama, kode: unitOrganisasi.kode }).from(unitOrganisasi).where(eq(unitOrganisasi.id, id)).limit(1)
   if (!existing) throw new Error('Unit organisasi tidak ditemukan')
 
   // Cek apakah ada children
@@ -112,4 +128,11 @@ export async function deleteUnitOrganisasiService(id: string) {
   if (Number(childCount) > 0) throw new Error('Tidak bisa hapus unit yang masih memiliki sub-unit. Hapus sub-unit terlebih dahulu.')
 
   await db.delete(unitOrganisasi).where(eq(unitOrganisasi.id, id))
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'delete_unit',
+    details: `Menghapus unit organisasi: "${existing.nama}" (Kode: ${existing.kode})`,
+  })
 }

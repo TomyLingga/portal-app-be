@@ -11,6 +11,7 @@ import {
   refTipeUnit,
   refPenempatanArea,
   refKategoriAplikasi,
+  refAgama,
   user,
   unitOrganisasi,
   employee,
@@ -32,6 +33,11 @@ const client = postgres({
 const db = drizzle(client)
 
 async function seed() {
+  console.log('⚠️  Seeder is disabled to prevent overwriting your data.')
+  console.log('Uncomment the call at the bottom of src/db/seed.ts and remove this return statement if you really want to run it.')
+  await client.end()
+  return
+
   console.log('🌱  Seeding database...\n')
 
   // Clear existing tables in correct order to avoid foreign key violations
@@ -50,6 +56,7 @@ async function seed() {
   await db.delete(refTipeUnit)
   await db.delete(refPenempatanArea)
   await db.delete(refKategoriAplikasi)
+  await db.delete(refAgama)
   console.log('   ✅ Clean slate ready\n')
 
   // ── Ref Status Karyawan ────────────────────────────────────────────────────
@@ -94,6 +101,20 @@ async function seed() {
   ]
   for (const data of statusPernikahanData) {
     await db.insert(refStatusPernikahan).values(data).onConflictDoNothing()
+  }
+
+  // ── Ref Agama ─────────────────────────────────────────────────────────────
+  console.log('   → ref_agama')
+  const agamaData = [
+    { kode: 'ISLAM',    label: 'Islam' },
+    { kode: 'PROTESTAN',label: 'Kristen Protestan' },
+    { kode: 'KATOLIK',  label: 'Kristen Katolik' },
+    { kode: 'HINDU',    label: 'Hindu' },
+    { kode: 'BUDDHA',   label: 'Buddha' },
+    { kode: 'KHONGHUCU',label: 'Khonghucu' },
+  ]
+  for (const data of agamaData) {
+    await db.insert(refAgama).values(data).onConflictDoNothing()
   }
 
   // ── Ref Grade ──────────────────────────────────────────────────────────────
@@ -697,8 +718,8 @@ async function seed() {
   console.log('\n✅  Seeding complete!\n')
   await client.end()
 }
-
-seed().catch(err => {
-  console.error('❌  Seed failed:', err)
-  process.exit(1)
-})
+// seed().catch(err => {
+//   console.error('❌  Seed failed:', err)
+//   process.exit(1)
+// })
+console.log('⚠️  Seed function execution is commented out.')

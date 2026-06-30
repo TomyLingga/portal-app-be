@@ -25,7 +25,7 @@ export default async function employeeRoutes(fastify: FastifyInstance) {
   // POST /api/employees
   fastify.post('/', { preHandler: adminOnly }, async (request, reply) => {
     const input  = createEmployeeSchema.parse(request.body)
-    const result = await createEmployeeService(input)
+    const result = await createEmployeeService(input, request.user.sub)
     return reply.code(201).send(ok(result))
   })
 
@@ -40,14 +40,14 @@ export default async function employeeRoutes(fastify: FastifyInstance) {
   fastify.put('/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const input  = updateEmployeeSchema.parse(request.body)
-    const result = await updateEmployeeService(id, input)
+    const result = await updateEmployeeService(id, input, request.user.sub)
     return reply.send(ok(result))
   })
 
   // DELETE /api/employees/:id
   fastify.delete('/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await deleteEmployeeService(id)
+    await deleteEmployeeService(id, request.user.sub)
     return reply.code(204).send()
   })
 
@@ -59,7 +59,7 @@ export default async function employeeRoutes(fastify: FastifyInstance) {
     if (!file) throw new Error('File foto tidak ditemukan dalam request')
 
     const filename = await saveUploadedFile(file, 'employees')
-    const result   = await updateEmployeePhotoService(id, filename)
+    const result   = await updateEmployeePhotoService(id, filename, request.user.sub)
 
     return reply.send(ok(result))
   })

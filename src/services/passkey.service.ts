@@ -284,5 +284,13 @@ export async function deletePasskeyService(userId: string, id: string) {
     .where(and(eq(userPasskey.id, id), eq(userPasskey.userId, userId)))
     .returning()
   if (!deleted) throw new Error('Passkey tidak ditemukan')
+
+  // Log activity
+  await db.insert(activityLog).values({
+    userId,
+    action: 'delete_passkey',
+    details: `Menghapus passkey/authenticator: ${deleted.name}`,
+  })
+
   return { success: true }
 }

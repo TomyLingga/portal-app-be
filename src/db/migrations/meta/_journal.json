@@ -57,6 +57,13 @@
       "when": 1782620892500,
       "tag": "0007_activity_log",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782620892600,
+      "tag": "0008_add_ref_agama",
+      "breakpoints": true
     }
   ]
 }

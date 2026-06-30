@@ -26,7 +26,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   // POST /api/users
   fastify.post('/', { preHandler: adminOnly }, async (request, reply) => {
     const input  = createUserSchema.parse(request.body)
-    const result = await createUserService(input)
+    const result = await createUserService(input, request.user.sub)
     return reply.code(201).send(ok(result))
   })
 
@@ -39,14 +39,14 @@ export default async function userRoutes(fastify: FastifyInstance) {
   // DELETE /api/users/passkeys/:id
   fastify.delete('/passkeys/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await deletePasskeyAdminService(id)
+    await deletePasskeyAdminService(id, request.user.sub)
     return reply.code(204).send()
   })
 
   // DELETE /api/users/:id/passkeys
   fastify.delete('/:id/passkeys', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await deleteAllUserPasskeysService(id)
+    await deleteAllUserPasskeysService(id, request.user.sub)
     return reply.code(204).send()
   })
 
@@ -59,7 +59,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   // POST /api/users/:id/2fa/disable
   fastify.post('/:id/2fa/disable', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await disableUser2faService(id)
+    await disableUser2faService(id, request.user.sub)
     return reply.send(ok({ message: '2FA berhasil dinonaktifkan' }))
   })
 
@@ -74,14 +74,14 @@ export default async function userRoutes(fastify: FastifyInstance) {
   fastify.put('/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const input  = updateUserSchema.parse(request.body)
-    const result = await updateUserService(id, input)
+    const result = await updateUserService(id, input, request.user.sub)
     return reply.send(ok(result))
   })
 
   // DELETE /api/users/:id
   fastify.delete('/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await deleteUserService(id)
+    await deleteUserService(id, request.user.sub)
     return reply.code(204).send()
   })
 
@@ -103,7 +103,7 @@ export default async function userRoutes(fastify: FastifyInstance) {
   // DELETE /api/users/:id/revoke-app/:appId
   fastify.delete('/:id/revoke-app/:appId', { preHandler: adminOnly }, async (request, reply) => {
     const { id, appId } = request.params as { id: string; appId: string }
-    await revokeAppService(id, appId)
+    await revokeAppService(id, appId, request.user.sub)
     return reply.code(204).send()
   })
 }
