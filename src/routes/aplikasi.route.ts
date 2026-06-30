@@ -11,6 +11,7 @@ import {
 } from '../services/aplikasi.service'
 import { saveUploadedFile }  from '../utils/file'
 import { ok } from '../utils/response'
+import { checkUserEmployeeLinkService } from '../services/auth.service'
 
 export default async function aplikasiRoutes(fastify: FastifyInstance) {
   const authOnly  = [fastify.authenticate]
@@ -19,6 +20,7 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
   // GET /api/apps
   fastify.get('/', { preHandler: authOnly }, async (request, reply) => {
     const query  = listAplikasiQuerySchema.parse(request.query)
+    await checkUserEmployeeLinkService(request.user.sub)
     const result = await listAplikasiService(query)
     return reply.send(ok(result.rows, result.meta))
   })
@@ -33,6 +35,7 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
   // GET /api/apps/:id
   fastify.get('/:id', { preHandler: authOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
+    await checkUserEmployeeLinkService(request.user.sub)
     return reply.send(ok(await getAplikasiByIdService(id)))
   })
 
@@ -54,6 +57,7 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
   fastify.post('/:id/access', { preHandler: authOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const userId = request.user.sub
+    await checkUserEmployeeLinkService(userId)
     await logAppAccessService(userId, id)
     return reply.send(ok({ success: true }))
   })

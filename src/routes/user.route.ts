@@ -1,12 +1,11 @@
 // ─── Routes: User ─────────────────────────────────────────────────────────────
 import { FastifyInstance }   from 'fastify'
 import {
-  createUserSchema, updateUserSchema, grantAppSchema, listUserQuerySchema,
+  createUserSchema, updateUserSchema, listUserQuerySchema,
 } from '../validators/user.validator'
 import {
   listUsersService, getUserByIdService, createUserService,
   updateUserService, deleteUserService,
-  grantAppService, revokeAppService, getUserAppsService,
   listAllPasskeysService, deletePasskeyAdminService,
   listUsers2faService, disableUser2faService,
   deleteAllUserPasskeysService,
@@ -85,25 +84,4 @@ export default async function userRoutes(fastify: FastifyInstance) {
     return reply.code(204).send()
   })
 
-  // GET /api/users/:id/apps — daftar aplikasi yang bisa diakses user
-  fastify.get('/:id/apps', { preHandler: adminOnly }, async (request, reply) => {
-    const { id } = request.params as { id: string }
-    const result = await getUserAppsService(id)
-    return reply.send(ok(result))
-  })
-
-  // POST /api/users/:id/grant-app
-  fastify.post('/:id/grant-app', { preHandler: adminOnly }, async (request, reply) => {
-    const { id }     = request.params as { id: string }
-    const { appId }  = grantAppSchema.parse(request.body)
-    const result = await grantAppService(id, appId, request.user.sub)
-    return reply.code(201).send(ok(result))
-  })
-
-  // DELETE /api/users/:id/revoke-app/:appId
-  fastify.delete('/:id/revoke-app/:appId', { preHandler: adminOnly }, async (request, reply) => {
-    const { id, appId } = request.params as { id: string; appId: string }
-    await revokeAppService(id, appId, request.user.sub)
-    return reply.code(204).send()
-  })
 }

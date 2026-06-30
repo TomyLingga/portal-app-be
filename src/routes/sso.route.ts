@@ -3,6 +3,9 @@ import { FastifyInstance }   from 'fastify'
 import { z }                 from 'zod'
 import { generateSSOTokenService, verifySSOTokenService } from '../services/sso.service'
 import { ok }                from '../utils/response'
+import { db }                from '../db'
+import { employee, refGrade, unitOrganisasi, refPenempatanArea, user as userTable } from '../db/schema'
+import { eq, gt, and, isNotNull } from 'drizzle-orm'
 
 const generateQuerySchema = z.object({
   app_id: z.string().uuid('app_id tidak valid'),
@@ -37,5 +40,49 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
     const { token, app_id } = verifyBodySchema.parse(request.body)
     const userData = await verifySSOTokenService(token, app_id)
     return reply.send(ok(userData))
+  })
+
+  /**
+   * GET /api/sso/employees
+   * Endpoint internal untuk aplikasi SSO client seperti MeeTrip agar bisa mengisi
+   * dropdown pemberi tugas dari data employee Portal.
+   */
+  fastify.get('/employees', async (request, reply) => {
+    if (request.headers['x-internal'] !== '1') {
+      return reply.code(403).send({ success: false, error: 'Forbidden' })
+    }
+
+    const query = z.object({
+      id: z.string().uuid().optional(),
+      minGradeLevel: z.coerce.number().optional(),
+      aboveGradeLevel: z.coerce.number().optional(),
+    }).parse(request.query)
+
+    const conditions = [isNotNull(userTable.id), eq(userTable.isActive, true)]
+    if (query.id) conditions.push(eq(employee.id, query.id))
+    const aboveGradeLevel = query.aboveGradeLevel ?? query.minGradeLevel
+    if (aboveGradeLevel !== undefined) conditions.push(gt(refGrade.level, aboveGradeLevel))
+
+    const rows = await db
+      .select({
+        id: userTable.id,
+        employeeId: employee.id,
+        namaLengkap: employee.nama,
+        jabatan: employee.jabatan,
+        gradeLevel: refGrade.level,
+        gradeKode: refGrade.kode,
+        unitNama: unitOrganisasi.nama,
+        penempatanNama: refPenempatanArea.nama,
+      })
+      .from(employee)
+      .leftJoin(userTable, eq(userTable.employeeId, employee.id))
+      .leftJoin(refGrade, eq(employee.gradeId, refGrade.id))
+      .leftJoin(unitOrganisasi, eq(employee.unitOrganisasiId, unitOrganisasi.id))
+      .leftJoin(refPenempatanArea, eq(employee.penempatanAreaId, refPenempatanArea.id))
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(refGrade.level, employee.nama)
+      .limit(100)
+
+    return reply.send(ok(rows))
   })
 }

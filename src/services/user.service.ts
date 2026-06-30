@@ -1,7 +1,7 @@
 // ─── Service: User ────────────────────────────────────────────────────────────
 import { eq, ilike, and, count, SQL } from 'drizzle-orm'
 import { db }              from '../db'
-import { user as userTable, appUserAccess, aplikasi, employee, userPasskey, activityLog } from '../db/schema'
+import { user as userTable, employee, userPasskey, activityLog } from '../db/schema'
 import { hashPassword }    from '../utils/hash'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type { CreateUserInput, UpdateUserInput, ListUserQuery } from '../validators/user.validator'
@@ -162,87 +162,7 @@ export async function deleteUserService(id: string, adminId: string) {
   })
 }
 
-export async function grantAppService(userId: string, appId: string, grantedById: string) {
-  // Cek apakah sudah ada akses
-  const [existing] = await db
-    .select({ id: appUserAccess.id })
-    .from(appUserAccess)
-    .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
-    .limit(1)
 
-  let result
-  if (existing) {
-    // Jika sudah ada akses, update saja grantedById-nya
-    const [updated] = await db
-      .update(appUserAccess)
-      .set({ grantedById })
-      .where(eq(appUserAccess.id, existing.id))
-      .returning()
-    result = updated
-  } else {
-    const [created] = await db
-      .insert(appUserAccess)
-      .values({ userId, appId, grantedById })
-      .returning()
-    result = created
-  }
-
-  const [app] = await db.select({ nama: aplikasi.nama }).from(aplikasi).where(eq(aplikasi.id, appId)).limit(1)
-  const [user] = await db.select({ email: userTable.email }).from(userTable).where(eq(userTable.id, userId)).limit(1)
-  if (app && user) {
-    await db.insert(activityLog).values({
-      userId: grantedById,
-      action: 'grant_app',
-      details: `Memberikan akses aplikasi "${app.nama}" ke pengguna ${user.email}`,
-    })
-  }
-
-  return result
-}
-
-export async function revokeAppService(userId: string, appId: string, adminId: string) {
-  const [existing] = await db
-    .select({ id: appUserAccess.id })
-    .from(appUserAccess)
-    .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
-    .limit(1)
-
-  if (!existing) throw new Error('Akses tidak ditemukan')
-
-  await db
-    .delete(appUserAccess)
-    .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
-
-  const [app] = await db.select({ nama: aplikasi.nama }).from(aplikasi).where(eq(aplikasi.id, appId)).limit(1)
-  const [user] = await db.select({ email: userTable.email }).from(userTable).where(eq(userTable.id, userId)).limit(1)
-  if (app && user) {
-    await db.insert(activityLog).values({
-      userId: adminId,
-      action: 'revoke_app',
-      details: `Mencabut akses aplikasi "${app.nama}" dari pengguna ${user.email}`,
-    })
-  }
-}
-
-export async function getUserAppsService(userId: string) {
-  return db
-    .select({
-      accessId:  appUserAccess.id,
-      grantedAt: appUserAccess.grantedAt,
-      app: {
-        id:       aplikasi.id,
-        nama:     aplikasi.nama,
-        url:      aplikasi.url,
-        authMode: aplikasi.authMode,
-        icon:     aplikasi.icon,
-        urutan:   aplikasi.urutan,
-      },
-    })
-    .from(appUserAccess)
-    .innerJoin(aplikasi, eq(appUserAccess.appId, aplikasi.id))
-    .where(and(eq(appUserAccess.userId, userId), eq(aplikasi.isActive, true)))
-    .orderBy(aplikasi.urutan)
-}
 
 export async function listAllPasskeysService() {
   return db

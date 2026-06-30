@@ -436,3 +436,28 @@ export async function resetPasswordService(fastify: FastifyInstance, token: stri
   return { message: 'Kata sandi berhasil diperbarui' }
 }
 
+export async function checkUserEmployeeLinkService(userId: string): Promise<void> {
+  const [found] = await db
+    .select({
+      role: userTable.role,
+      employeeId: userTable.employeeId,
+    })
+    .from(userTable)
+    .where(eq(userTable.id, userId))
+    .limit(1)
+
+  if (!found) {
+    const error = new Error('User tidak ditemukan') as any
+    error.statusCode = 404
+    throw error
+  }
+
+  // Jika bukan super_admin dan tidak terhubung ke employeeId, tolak akses
+  if (found.role !== 'super_admin' && !found.employeeId) {
+    const error = new Error('Akses ditolak. Akun Anda belum terhubung dengan data karyawan.') as any
+    error.statusCode = 403
+    throw error
+  }
+}
+
+

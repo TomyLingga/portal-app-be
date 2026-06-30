@@ -23,10 +23,6 @@ export const updateUserSchema = z.object({
   employeeId: z.string().uuid('employeeId tidak valid').optional().nullable(),
 })
 
-export const grantAppSchema = z.object({
-  appId: z.string().uuid('appId tidak valid'),
-})
-
 export const listUserQuerySchema = z.object({
   page:   z.coerce.number().int().min(1).default(1),
   limit:  z.coerce.number().int().min(1).max(1000).default(50),
@@ -36,5 +32,4 @@ export const listUserQuerySchema = z.object({
 
 export type CreateUserInput  = z.infer<typeof createUserSchema>
 export type UpdateUserInput  = z.infer<typeof updateUserSchema>
-export type GrantAppInput    = z.infer<typeof grantAppSchema>
 export type ListUserQuery    = z.infer<typeof listUserQuerySchema>
