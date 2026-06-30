@@ -2,11 +2,11 @@ const postgres = require('postgres');
 require('dotenv').config();
 
 const sql = postgres({
-  host: process.env.DB_HOST || '103.193.145.61',
-  port: parseInt(process.env.DB_PORT || '6881'),
+  host: process.env.DB_HOST || 'localhost',
+  port: parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME || 'inl_portal',
   username: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'Salvaco@24',
+  password: process.env.DB_PASSWORD || '',
 });
 
 async function main() {
