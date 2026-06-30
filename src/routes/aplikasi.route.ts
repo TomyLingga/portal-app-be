@@ -20,7 +20,6 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
   // GET /api/apps
   fastify.get('/', { preHandler: authOnly }, async (request, reply) => {
     const query  = listAplikasiQuerySchema.parse(request.query)
-    await checkUserEmployeeLinkService(request.user.sub)
     const result = await listAplikasiService(query)
     return reply.send(ok(result.rows, result.meta))
   })
@@ -35,7 +34,6 @@ export default async function aplikasiRoutes(fastify: FastifyInstance) {
   // GET /api/apps/:id
   fastify.get('/:id', { preHandler: authOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    await checkUserEmployeeLinkService(request.user.sub)
     return reply.send(ok(await getAplikasiByIdService(id)))
   })
 

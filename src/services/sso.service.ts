@@ -29,15 +29,20 @@ export async function generateSSOTokenService(userId: string, appId: string) {
   if (!app) throw new Error('Aplikasi tidak ditemukan atau tidak aktif')
   if (app.authMode !== 'sso') throw new Error('Aplikasi ini tidak menggunakan mode SSO')
 
-  // Cek status user
+  // Cek status user & employee link
   const [u] = await db
-    .select({ role: userTable.role, isActive: userTable.isActive })
+    .select({ role: userTable.role, isActive: userTable.isActive, employeeId: userTable.employeeId })
     .from(userTable)
     .where(eq(userTable.id, userId))
     .limit(1)
 
   if (!u || !u.isActive) {
     throw new Error('User tidak aktif atau tidak ditemukan')
+  }
+
+  // SSO hanya untuk user yang terhubung ke data karyawan (employee)
+  if (!u.employeeId) {
+    throw new Error('Akses SSO hanya tersedia untuk akun yang terhubung ke data karyawan. Hubungi administrator untuk menghubungkan akun Anda.')
   }
 
   // Parse expiry (misal '5m' → 5 * 60000 ms)
