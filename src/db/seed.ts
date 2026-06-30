@@ -670,20 +670,20 @@ async function seed() {
   if (adminUser) {
     await db.insert(activityLog).values([
       {
-        userId: adminUser.id,
+        userId: adminUser!.id,
         action: 'login',
         details: 'Login ke Portal SSO',
         createdAt: new Date(Date.now() - 3600000 * 5),
       },
       {
-        userId: adminUser.id,
+        userId: adminUser!.id,
         action: 'access_app',
         appId: '79864e1a-233b-4196-a6da-909ff7490f6f', // Sistem Absensi
         details: 'Login Single Sign-On (SSO) ke aplikasi "Sistem Absensi"',
         createdAt: new Date(Date.now() - 3600000 * 4.5),
       },
       {
-        userId: adminUser.id,
+        userId: adminUser!.id,
         action: 'update_profile_photo',
         details: 'Mengubah foto profil karyawan',
         createdAt: new Date(Date.now() - 3600000 * 3),
@@ -694,20 +694,20 @@ async function seed() {
   if (normalUser) {
     await db.insert(activityLog).values([
       {
-        userId: normalUser.id,
+        userId: normalUser!.id,
         action: 'login',
         details: 'Login ke Portal SSO (IP: 192.168.10.42)',
         createdAt: new Date(Date.now() - 3600000 * 2),
       },
       {
-        userId: normalUser.id,
+        userId: normalUser!.id,
         action: 'access_app',
         appId: '2de877fe-8e91-4511-8d11-9f1979668802', // Google
         details: 'Mengakses aplikasi Independent "Google"',
         createdAt: new Date(Date.now() - 3600000 * 1.8),
       },
       {
-        userId: normalUser.id,
+        userId: normalUser!.id,
         action: 'logout',
         details: 'Logout dari portal',
         createdAt: new Date(Date.now() - 3600000 * 0.5),
