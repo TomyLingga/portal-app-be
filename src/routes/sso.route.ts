@@ -73,6 +73,7 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
         gradeKode: refGrade.kode,
         unitNama: unitOrganisasi.nama,
         penempatanNama: refPenempatanArea.nama,
+        atasanId: employee.atasanId,
       })
       .from(employee)
       .leftJoin(userTable, eq(userTable.employeeId, employee.id))

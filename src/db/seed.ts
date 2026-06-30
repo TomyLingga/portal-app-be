@@ -33,11 +33,6 @@ const client = postgres({
 const db = drizzle(client)
 
 async function seed() {
-  console.log('⚠️  Seeder is disabled to prevent overwriting your data.')
-  console.log('Uncomment the call at the bottom of src/db/seed.ts and remove this return statement if you really want to run it.')
-  await client.end()
-  return
-
   console.log('🌱  Seeding database...\n')
 
   // Clear existing tables in correct order to avoid foreign key violations
@@ -654,6 +649,17 @@ async function seed() {
       isActive: true,
       warna: '#3b82f6',
     },
+    {
+      id: '8f252b13-9e8f-447d-80e4-0919a2cf2b43',
+      nama: 'MeeTrip',
+      url: 'http://localhost:3004',
+      authMode: 'sso' as const,
+      icon: 'meetrip_icon.png',
+      deskripsi: 'Sistem Perjalanan Dinas & Calendar of Meeting',
+      urutan: 2,
+      isActive: true,
+      warna: '#10b981',
+    },
   ]
 
   for (const app of aplikasiData) {
@@ -718,8 +724,7 @@ async function seed() {
   console.log('\n✅  Seeding complete!\n')
   await client.end()
 }
-// seed().catch(err => {
-//   console.error('❌  Seed failed:', err)
-//   process.exit(1)
-// })
-console.log('⚠️  Seed function execution is commented out.')
+seed().catch(err => {
+  console.error('❌  Seed failed:', err)
+  process.exit(1)
+})
