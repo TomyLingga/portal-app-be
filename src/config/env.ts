@@ -28,7 +28,7 @@ const envSchema = z.object({
 
   // Upload
   UPLOAD_DIR: z.string().default('uploads'),
-  UPLOAD_URL: z.string().url().default('http://localhost:3000/uploads'),
+  UPLOAD_URL: z.string().url().optional(),
 
   // Seed
   SEED_ADMIN_EMAIL:    z.string().email().default('admin@inl.co.id'),
@@ -88,7 +88,7 @@ export const config = {
   },
   upload: {
     dir: env.UPLOAD_DIR,
-    url: env.UPLOAD_URL,
+    url: env.UPLOAD_URL || `${env.FRONTEND_URL}/uploads`,
   },
   seed: {
     adminEmail:    env.SEED_ADMIN_EMAIL,

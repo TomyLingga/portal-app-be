@@ -2,7 +2,16 @@
 import crypto           from 'crypto'
 import { eq, and }      from 'drizzle-orm'
 import { db }           from '../db'
-import { ssoToken, aplikasi, user as userTable, activityLog } from '../db/schema'
+import {
+  ssoToken,
+  aplikasi,
+  user as userTable,
+  activityLog,
+  employee,
+  refGrade,
+  unitOrganisasi,
+  refPenempatanArea,
+} from '../db/schema'
 import { config }       from '../config/env'
 
 /**
@@ -87,7 +96,7 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
     .set({ isRevoked: true })
     .where(eq(ssoToken.id, found.id))
 
-  // Ambil data user
+  // Ambil data user + employee ringkas untuk cache lokal aplikasi SSO.
   const [userData] = await db
     .select({
       id:        userTable.id,
@@ -95,14 +104,60 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
       role:      userTable.role,
       isActive:  userTable.isActive,
       employeeId:userTable.employeeId,
+      employeeNama: employee.nama,
+      employeeJabatan: employee.jabatan,
+      gradeId: refGrade.id,
+      gradeKode: refGrade.kode,
+      gradeLabel: refGrade.label,
+      gradeLevel: refGrade.level,
+      unitId: unitOrganisasi.id,
+      unitNama: unitOrganisasi.nama,
+      unitKode: unitOrganisasi.kode,
+      penempatanAreaId: refPenempatanArea.id,
+      penempatanAreaNama: refPenempatanArea.nama,
+      penempatanLatitude: refPenempatanArea.latitude,
+      penempatanLongitude: refPenempatanArea.longitude,
     })
     .from(userTable)
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .leftJoin(refGrade, eq(employee.gradeId, refGrade.id))
+    .leftJoin(unitOrganisasi, eq(employee.unitOrganisasiId, unitOrganisasi.id))
+    .leftJoin(refPenempatanArea, eq(employee.penempatanAreaId, refPenempatanArea.id))
     .where(eq(userTable.id, found.userId))
     .limit(1)
 
   if (!userData || !userData.isActive) throw new Error('User tidak aktif')
 
-  return userData
+  return {
+    id: userData.id,
+    email: userData.email,
+    role: userData.role,
+    isActive: userData.isActive,
+    employeeId: userData.employeeId,
+    employee: userData.employeeId ? {
+      id: userData.employeeId,
+      nama: userData.employeeNama,
+      namaLengkap: userData.employeeNama,
+      jabatan: userData.employeeJabatan,
+      grade: userData.gradeId ? {
+        id: userData.gradeId,
+        kode: userData.gradeKode,
+        label: userData.gradeLabel,
+        level: userData.gradeLevel,
+      } : null,
+      unit: userData.unitId ? {
+        id: userData.unitId,
+        kode: userData.unitKode,
+        nama: userData.unitNama,
+      } : null,
+      penempatanArea: userData.penempatanAreaId ? {
+        id: userData.penempatanAreaId,
+        nama: userData.penempatanAreaNama,
+        latitude: userData.penempatanLatitude,
+        longitude: userData.penempatanLongitude,
+      } : null,
+    } : null,
+  }
 }
 
 // Helper: parse expiry string (e.g. '5m', '1h', '30s') → milliseconds
