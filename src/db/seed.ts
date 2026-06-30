@@ -154,9 +154,9 @@ async function seed() {
   // ── Ref Penempatan Area ────────────────────────────────────────────────────
   console.log('   → ref_penempatan_area')
   const penempatanAreaData = [
-    { id: 'e39ae5ed-9965-44f4-8d42-3b05682a6f1b', nama: 'PKS Sei Mangkei', longitude: '99.3732', latitude: '3.1972' },
-    { id: 'ca59ec54-880a-4e1f-b53b-c07d2ddbca60', nama: 'Kantor Direksi Medan', longitude: '98.6782', latitude: '3.5852' },
-    { id: 'b75182a4-4a79-4789-8641-c3989c363bd0', nama: 'Gudang Logistik Kuala Tanjung', longitude: '99.4445', latitude: '3.3855' },
+    { id: 'e39ae5ed-9965-44f4-8d42-3b05682a6f1b', kode: 'PKS_SEI_MANGKEI', nama: 'PKS Sei Mangkei', longitude: '99.3732', latitude: '3.1972' },
+    { id: 'ca59ec54-880a-4e1f-b53b-c07d2ddbca60', kode: 'KDI_MEDAN', nama: 'Kantor Direksi Medan', longitude: '98.6782', latitude: '3.5852' },
+    { id: 'b75182a4-4a79-4789-8641-c3989c363bd0', kode: 'GDG_KUALA_TANJUNG', nama: 'Gudang Logistik Kuala Tanjung', longitude: '99.4445', latitude: '3.3855' },
   ]
   for (const data of penempatanAreaData) {
     await db.insert(refPenempatanArea).values(data).onConflictDoNothing()

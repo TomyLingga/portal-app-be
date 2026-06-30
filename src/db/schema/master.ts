@@ -48,6 +48,7 @@ export const refTipeUnit = pgTable('ref_tipe_unit', {
 // Penempatan Area Kerja
 export const refPenempatanArea = pgTable('ref_penempatan_area', {
   id:        uuid('id').primaryKey().$defaultFn(genUUID),
+  kode:      varchar('kode',      { length: 50 }).notNull().unique(),
   nama:      varchar('nama',      { length: 150 }).notNull(),
   longitude: varchar('longitude', { length: 50 }).notNull(),
   latitude:  varchar('latitude',  { length: 50 }).notNull(),

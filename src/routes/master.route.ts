@@ -374,10 +374,10 @@ export default async function masterRoutes(fastify: FastifyInstance) {
 
   // POST /api/master/penempatan-area
   fastify.post('/penempatan-area', { preHandler: authOnly }, async (request, reply) => {
-    const { nama, longitude, latitude } = request.body as { nama: string; longitude: string; latitude: string }
-    if (!validateRequired(reply, { nama, longitude, latitude }, 'Nama, Longitude, dan Latitude wajib diisi.')) return
+    const { kode, nama, longitude, latitude } = request.body as { kode: string; nama: string; longitude: string; latitude: string }
+    if (!validateRequired(reply, { kode, nama, longitude, latitude }, 'Kode, Nama, Longitude, dan Latitude wajib diisi.')) return
 
-    const [row] = await db.insert(refPenempatanArea).values({ nama, longitude, latitude }).returning()
+    const [row] = await db.insert(refPenempatanArea).values({ kode, nama, longitude, latitude }).returning()
     await db.insert(activityLog).values({
       userId: request.user.sub,
       action: 'create_master_penempatan_area',
@@ -389,12 +389,12 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   // PUT /api/master/penempatan-area/:id
   fastify.put('/penempatan-area/:id', { preHandler: authOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
-    const { nama, longitude, latitude } = request.body as { nama: string; longitude: string; latitude: string }
-    if (!validateRequired(reply, { nama, longitude, latitude }, 'Nama, Longitude, dan Latitude wajib diisi.')) return
+    const { kode, nama, longitude, latitude } = request.body as { kode: string; nama: string; longitude: string; latitude: string }
+    if (!validateRequired(reply, { kode, nama, longitude, latitude }, 'Kode, Nama, Longitude, dan Latitude wajib diisi.')) return
 
     const [row] = await db
       .update(refPenempatanArea)
-      .set({ nama, longitude, latitude })
+      .set({ kode, nama, longitude, latitude })
       .where(eq(refPenempatanArea.id, id))
       .returning()
     await db.insert(activityLog).values({
