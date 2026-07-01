@@ -71,6 +71,13 @@
       "when": 1782620892700,
       "tag": "0009_add_login_songs",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782891106852,
+      "tag": "0010_drop_login_songs",
+      "breakpoints": true
     }
   ]
 }
