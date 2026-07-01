@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import { z } from 'zod'
 
+// Trigger restart for env reload
 // ─── Schema validasi env ──────────────────────────────────────────────────────
 const envSchema = z.object({
   // Database
@@ -25,6 +26,7 @@ const envSchema = z.object({
 
   // SSO
   SSO_TOKEN_EXPIRES_IN: z.string().default('5m'),
+  SSO_INTERNAL_TOKEN: z.string().default('secret_development_token'),
 
   // Upload
   UPLOAD_DIR: z.string().default('uploads'),
@@ -85,6 +87,7 @@ export const config = {
   },
   sso: {
     tokenExpiresIn: env.SSO_TOKEN_EXPIRES_IN,
+    internalToken:  env.SSO_INTERNAL_TOKEN,
   },
   upload: {
     dir: env.UPLOAD_DIR,

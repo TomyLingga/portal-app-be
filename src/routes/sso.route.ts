@@ -6,6 +6,7 @@ import { ok }                from '../utils/response'
 import { db }                from '../db'
 import { employee, refGrade, unitOrganisasi, refPenempatanArea, user as userTable } from '../db/schema'
 import { eq, gt, and, isNotNull } from 'drizzle-orm'
+import { config }             from '../config/env'
 
 const generateQuerySchema = z.object({
   app_id: z.string().uuid('app_id tidak valid'),
@@ -48,7 +49,7 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
    * dropdown pemberi tugas dari data employee Portal.
    */
   fastify.get('/employees', async (request, reply) => {
-    if (request.headers['x-internal'] !== '1') {
+    if (request.headers['x-internal'] !== config.sso.internalToken) {
       return reply.code(403).send({ success: false, error: 'Forbidden' })
     }
 
@@ -93,7 +94,7 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
    * data grade dari Portal.
    */
   fastify.get('/grades', async (request, reply) => {
-    if (request.headers['x-internal'] !== '1') {
+    if (request.headers['x-internal'] !== config.sso.internalToken) {
       return reply.code(403).send({ success: false, error: 'Forbidden' })
     }
     const rows = await db.select().from(refGrade).orderBy(refGrade.level)
