@@ -19,6 +19,7 @@ import organisasiRoutes from './routes/organisasi.route'
 import aplikasiRoutes   from './routes/aplikasi.route'
 import ssoRoutes        from './routes/sso.route'
 import masterRoutes     from './routes/master.route'
+import loginSongRoutes   from './routes/login_song.route'
 
 // ─── Pastikan folder uploads ada ─────────────────────────────────────────────
 const uploadDir = path.resolve(config.upload.dir)
@@ -60,6 +61,7 @@ async function buildApp() {
   await fastify.register(aplikasiRoutes,   { prefix: '/api/apps'   })
   await fastify.register(ssoRoutes,        { prefix: '/api/sso'    })
   await fastify.register(masterRoutes,     { prefix: '/api/master' })
+  await fastify.register(loginSongRoutes,  { prefix: '/api/login-songs' })
 
   // ─── Health check ────────────────────────────────────────────────────────────
   fastify.get('/health', async () => ({

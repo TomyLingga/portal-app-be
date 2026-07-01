@@ -19,6 +19,7 @@ import {
   appUserAccess,
   ssoToken,
   activityLog,
+  loginSongs,
 } from './schema'
 
 const client = postgres({
@@ -52,6 +53,7 @@ async function seed() {
   await db.delete(refPenempatanArea)
   await db.delete(refKategoriAplikasi)
   await db.delete(refAgama)
+  await db.delete(loginSongs)
   console.log('   ✅ Clean slate ready\n')
 
   // ── Ref Status Karyawan ────────────────────────────────────────────────────
@@ -720,6 +722,15 @@ async function seed() {
       },
     ])
   }
+  
+  // ── Login Songs ───────────────────────────────────────────────────────────
+  console.log('   → login_songs')
+  await db.insert(loginSongs).values({
+    id: 'b476eb39-9d7a-4b9d-ba20-e14f09a3c7ef',
+    title: 'Indonesia Raya',
+    filename: 'indonesia-raya.mp3',
+    isActive: true,
+  }).onConflictDoNothing()
 
   console.log('\n✅  Seeding complete!\n')
   await client.end()

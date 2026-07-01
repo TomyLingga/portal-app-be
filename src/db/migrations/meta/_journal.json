@@ -64,6 +64,13 @@
       "when": 1782620892600,
       "tag": "0008_add_ref_agama",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782620892700,
+      "tag": "0009_add_login_songs",
+      "breakpoints": true
     }
   ]
 }

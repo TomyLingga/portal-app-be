@@ -77,3 +77,59 @@ export function buildFileUrl(filename: string | null | undefined): string | null
   if (!filename) return null
   return `${config.upload.url}/${filename}`
 }
+
+/**
+ * Simpan file audio upload (.mp3) ke front-end public/audio directory.
+ * Nama file di-rename ke: {timestamp}_{random}.mp3
+ * Kembalikan nama file saja (bukan full path).
+ */
+export async function saveUploadedAudioFile(file: MultipartFile): Promise<string> {
+  const allowedMime = ['audio/mpeg', 'audio/mp3']
+  if (!allowedMime.includes(file.mimetype) && !file.filename.endsWith('.mp3')) {
+    throw new Error('Tipe file tidak didukung. Hanya file .mp3')
+  }
+
+  // Path ke frontend public/audio
+  const audioDir = path.join(process.cwd(), '../portal-fe/public/audio')
+
+  // Buat folder jika belum ada
+  if (!fs.existsSync(audioDir)) {
+    fs.mkdirSync(audioDir, { recursive: true })
+  }
+
+  const rand     = Math.random().toString(36).slice(2, 8)
+  const filename = `${Date.now()}_${rand}.mp3`
+  const filepath = path.join(audioDir, filename)
+
+  // Cek ukuran file via stream (track bytes) - batas 20MB untuk audio
+  let bytes = 0
+  const maxBytes = 20 * 1024 * 1024 // 20 MB
+
+  await pipeline(
+    file.file,
+    async function* (source) {
+      for await (const chunk of source) {
+        bytes += (chunk as Buffer).length
+        if (bytes > maxBytes) {
+          throw new Error('Ukuran file audio melebihi 20MB')
+        }
+        yield chunk
+      }
+    },
+    fs.createWriteStream(filepath),
+  )
+
+  return filename
+}
+
+/**
+ * Hapus file audio dari frontend public/audio jika ada.
+ */
+export function deleteAudioFile(filename: string): void {
+  if (!filename) return
+  const filepath = path.join(process.cwd(), '../portal-fe/public/audio', filename)
+  if (fs.existsSync(filepath)) {
+    fs.unlinkSync(filepath)
+  }
+}
+
