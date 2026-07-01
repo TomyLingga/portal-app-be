@@ -1,12 +1,12 @@
 // ─── Service: Employee ────────────────────────────────────────────────────────
 import { eq, ilike, and, count, or, SQL } from 'drizzle-orm'
 import { db }            from '../db'
-import { employee, activityLog }      from '../db/schema'
+import { employee, activityLog, user }      from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import { buildFileUrl, deleteFile }       from '../utils/file'
 import type { CreateEmployeeInput, UpdateEmployeeInput, ListEmployeeQuery } from '../validators/employee.validator'
 
-function withFileUrl(row: typeof employee.$inferSelect) {
+function withFileUrl(row: any) {
   return {
     ...row,
     fotoProfil: buildFileUrl(row.fotoProfil),
@@ -37,8 +37,38 @@ export async function listEmployeesService(query: ListEmployeeQuery) {
   const [{ total }] = await db.select({ total: count() }).from(employee).where(where)
 
   const rows = await db
-    .select()
+    .select({
+      id: employee.id,
+      nrk: employee.nrk,
+      nik: employee.nik,
+      nama: employee.nama,
+      jenisKelamin: employee.jenisKelamin,
+      jabatan: employee.jabatan,
+      gradeId: employee.gradeId,
+      atasanId: employee.atasanId,
+      unitOrganisasiId: employee.unitOrganisasiId,
+      tanggalMasuk: employee.tanggalMasuk,
+      tempatLahir: employee.tempatLahir,
+      tanggalLahir: employee.tanggalLahir,
+      nomorHp: employee.nomorHp,
+      alamat: employee.alamat,
+      isActive: employee.isActive,
+      fotoProfil: employee.fotoProfil,
+      statusKaryawanId: employee.statusKaryawanId,
+      pendidikanTerakhirId: employee.pendidikanTerakhirId,
+      statusPernikahanId: employee.statusPernikahanId,
+      penempatanAreaId: employee.penempatanAreaId,
+      agama: employee.agama,
+      createdAt: employee.createdAt,
+      updatedAt: employee.updatedAt,
+      // joined user fields:
+      userId: user.id,
+      userEmail: user.email,
+      userRole: user.role,
+      userIsActive: user.isActive,
+    })
     .from(employee)
+    .leftJoin(user, eq(employee.id, user.employeeId))
     .where(where)
     .limit(limit)
     .offset(offset)

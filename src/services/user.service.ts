@@ -1,5 +1,5 @@
 // ─── Service: User ────────────────────────────────────────────────────────────
-import { eq, ilike, and, count, SQL } from 'drizzle-orm'
+import { eq, ilike, and, count, SQL, sql } from 'drizzle-orm'
 import { db }              from '../db'
 import { user as userTable, employee, userPasskey, activityLog } from '../db/schema'
 import { hashPassword }    from '../utils/hash'
@@ -113,7 +113,12 @@ export async function updateUserService(id: string, input: UpdateUserInput, admi
   const updateData: Partial<typeof userTable.$inferInsert> = {}
   if (input.email      !== undefined) updateData.email      = input.email
   if (input.role       !== undefined) updateData.role       = input.role
-  if (input.isActive   !== undefined) updateData.isActive   = input.isActive
+  if (input.isActive   !== undefined) {
+    updateData.isActive = input.isActive
+    if (input.isActive === false) {
+      updateData.tokenVersion = sql`${userTable.tokenVersion} + 1` as any
+    }
+  }
   if (input.employeeId !== undefined) updateData.employeeId = input.employeeId ?? null
   if (input.password) {
     updateData.passwordHash = await hashPassword(input.password)
