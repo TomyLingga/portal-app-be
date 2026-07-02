@@ -344,8 +344,6 @@ export async function disableTotpService(userId: string, password?: string) {
 }
 
 export async function forgotPasswordService(fastify: FastifyInstance, email: string) {
-  console.log(`\n[forgotPasswordService] Looking up email: "${email}"`)
-
   const [user] = await db
     .select()
     .from(userTable)
@@ -353,11 +351,8 @@ export async function forgotPasswordService(fastify: FastifyInstance, email: str
     .limit(1)
 
   if (!user) {
-    console.warn(`[forgotPasswordService] ⚠️  Email "${email}" NOT FOUND in database — no email sent`)
     return { message: 'Link reset password telah dikirim jika email terdaftar.' }
   }
-
-  console.log(`[forgotPasswordService] ✅ User found: id=${user.id}, email=${user.email}`)
 
   const token = fastify.jwt.sign(
     {
@@ -370,10 +365,8 @@ export async function forgotPasswordService(fastify: FastifyInstance, email: str
   )
 
   const resetLink = `${config.app.frontendUrl}/reset-password?token=${token}`
-  console.log(`[forgotPasswordService] Reset link: ${resetLink}`)
-  console.log(`[forgotPasswordService] Sending email via SMTP to: ${user.email}`)
 
-  sendMail({
+  void sendMail({
     to: user.email,
     subject: 'Reset Kata Sandi Portal INL',
     html: `
@@ -393,9 +386,9 @@ export async function forgotPasswordService(fastify: FastifyInstance, email: str
       </div>
     `
   }).then(() => {
-    console.log(`[forgotPasswordService] ✅ Email sent successfully to ${user.email}`)
+    fastify.log.info({ userId: user.id }, 'Password reset email sent')
   }).catch((err) => {
-    console.error(`[forgotPasswordService] ❌ Failed to send email to ${user.email}:`, err)
+    fastify.log.error({ err, userId: user.id }, 'Failed to send password reset email')
   })
 
   return { message: 'Link reset password telah dikirim ke email Anda.' }

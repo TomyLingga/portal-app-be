@@ -1,7 +1,7 @@
 // ─── Routes: Auth ─────────────────────────────────────────────────────────────
 import { FastifyInstance } from 'fastify'
 import { MultipartFile }  from '@fastify/multipart'
-import { loginSchema, refreshTokenSchema }     from '../validators/auth.validator'
+import { loginSchema }     from '../validators/auth.validator'
 import {
   loginService,
   logoutService,
@@ -29,6 +29,7 @@ import { getUserByIdService }         from '../services/user.service'
 import { ok, err }         from '../utils/response'
 import { db }              from '../db'
 import { activityLog }     from '../db/schema'
+import { clearAuthCookies, getRefreshCookie, setAuthCookies } from '../utils/cookie'
 
 export default async function authRoutes(fastify: FastifyInstance) {
 
@@ -36,6 +37,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/login', async (request, reply) => {
     const input = loginSchema.parse(request.body)
     const result = await loginService(fastify, input)
+    if ('accessToken' in result && result.accessToken && result.refreshToken) {
+      setAuthCookies(reply, result.accessToken, result.refreshToken)
+    }
     return reply.code(200).send(ok(result))
   })
 
@@ -46,13 +50,19 @@ export default async function authRoutes(fastify: FastifyInstance) {
       return reply.code(400).send(err('totpToken dan code wajib diisi'))
     }
     const result = await verifyTotpLoginService(fastify, totpToken, code)
+    setAuthCookies(reply, result.accessToken, result.refreshToken)
     return reply.code(200).send(ok(result))
   })
 
   // POST /api/auth/refresh
   fastify.post('/refresh', async (request, reply) => {
-    const { refreshToken } = refreshTokenSchema.parse(request.body)
+    const body = (request.body || {}) as { refreshToken?: string }
+    const refreshToken = body.refreshToken || getRefreshCookie(request)
+    if (!refreshToken) {
+      return reply.code(400).send(err('Refresh token wajib diisi'))
+    }
     const result = await refreshTokenService(fastify, refreshToken)
+    setAuthCookies(reply, result.accessToken, result.refreshToken)
     return reply.code(200).send(ok(result))
   })
 
@@ -61,6 +71,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
     await logoutService(request.user.sub)
+    clearAuthCookies(reply)
     return reply.code(200).send(ok({ message: 'Logout berhasil' }))
   })
 
@@ -110,6 +121,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
       return reply.code(400).send(err('loginResponse dan challengeToken wajib diisi'))
     }
     const result = await verifyPasskeyLoginService(fastify, loginResponse, challengeToken)
+    setAuthCookies(reply, result.accessToken, result.refreshToken)
     return reply.code(200).send(ok(result))
   })
 

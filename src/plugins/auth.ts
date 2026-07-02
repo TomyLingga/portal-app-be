@@ -5,6 +5,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify'
 import { eq }            from 'drizzle-orm'
 import { db }            from '../db'
 import { user as userTable } from '../db/schema'
+import { getAccessCookie } from '../utils/cookie'
 
 export default fp(async function authPlugin(fastify: FastifyInstance) {
 
@@ -15,6 +16,12 @@ export default fp(async function authPlugin(fastify: FastifyInstance) {
   fastify.decorate('authenticate',
     async function (request: FastifyRequest, reply: FastifyReply) {
       try {
+        if (!request.headers.authorization) {
+          const token = getAccessCookie(request)
+          if (token) {
+            request.headers.authorization = `Bearer ${token}`
+          }
+        }
         await request.jwtVerify()
       } catch (err: any) {
         fastify.log.warn(`[Auth] JWT verification failed for request ${request.url}: ${err.message}`)

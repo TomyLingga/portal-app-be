@@ -50,6 +50,14 @@ const envSchema = z.object({
   MAIL_ENCRYPTION:   z.string().default('tls'),
   MAIL_FROM_ADDRESS: z.string().email().default('info@inl.co.id'),
   MAIL_FROM_NAME:    z.string().default('Portal INL'),
+}).superRefine((env, ctx) => {
+  if (env.NODE_ENV === 'production' && env.SSO_INTERNAL_TOKEN === 'secret_development_token') {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['SSO_INTERNAL_TOKEN'],
+      message: 'SSO_INTERNAL_TOKEN wajib diganti untuk production',
+    })
+  }
 })
 
 const parsed = envSchema.safeParse(process.env)

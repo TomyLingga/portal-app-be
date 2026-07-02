@@ -25,6 +25,7 @@ function validateRequired(reply: FastifyReply, fields: Record<string, any>, erro
 
 export default async function masterRoutes(fastify: FastifyInstance) {
   const authOnly = [fastify.authenticate]
+  const adminOnly = [fastify.authenticate, fastify.authorize(['super_admin'])]
 
   // GET /api/master/status-karyawan
   fastify.get('/status-karyawan', { preHandler: authOnly }, async (_request, reply) => {
@@ -57,7 +58,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // POST /api/master/tipe-unit
-  fastify.post('/tipe-unit', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/tipe-unit', { preHandler: adminOnly }, async (request, reply) => {
     const { kode, label, level, warna } = request.body as { kode: string; label: string; level: number; warna: string }
     if (!validateRequired(reply, { kode, label, level, warna }, 'Kode, Label, Level, dan Warna wajib diisi.')) return
 
@@ -71,7 +72,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // PUT /api/master/tipe-unit/:id  (only label & warna are editable)
-  fastify.put('/tipe-unit/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/tipe-unit/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { label, warna } = request.body as { label: string; warna: string }
     if (!validateRequired(reply, { label, warna }, 'Label dan Warna wajib diisi.')) return
@@ -90,7 +91,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // DELETE /api/master/tipe-unit/:id
-  fastify.delete('/tipe-unit/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/tipe-unit/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const [existing] = await db.select({ label: refTipeUnit.label, kode: refTipeUnit.kode }).from(refTipeUnit).where(eq(refTipeUnit.id, id)).limit(1)
     await db.delete(refTipeUnit).where(eq(refTipeUnit.id, id))
@@ -105,7 +106,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // ─── CRUD: Status Karyawan ────────────────────────────────────────────────────
-  fastify.post('/status-karyawan', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/status-karyawan', { preHandler: adminOnly }, async (request, reply) => {
     const { kode, label } = request.body as { kode: string; label: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
 
@@ -118,7 +119,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     return reply.send(ok(row))
   })
 
-  fastify.put('/status-karyawan/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/status-karyawan/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { kode, label } = request.body as { kode: string; label: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
@@ -136,7 +137,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     return reply.send(ok(row))
   })
 
-  fastify.delete('/status-karyawan/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/status-karyawan/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const [existing] = await db.select({ label: refStatusKaryawan.label, kode: refStatusKaryawan.kode }).from(refStatusKaryawan).where(eq(refStatusKaryawan.id, id)).limit(1)
     await db.delete(refStatusKaryawan).where(eq(refStatusKaryawan.id, id))
@@ -151,7 +152,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // ─── CRUD: Pendidikan ─────────────────────────────────────────────────────────
-  fastify.post('/pendidikan', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/pendidikan', { preHandler: adminOnly }, async (request, reply) => {
     const { kode, label, urutan } = request.body as { kode: string; label: string; urutan?: number }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
 
@@ -164,7 +165,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     return reply.send(ok(row))
   })
 
-  fastify.put('/pendidikan/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/pendidikan/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { kode, label, urutan } = request.body as { kode: string; label: string; urutan?: number }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
@@ -182,7 +183,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     return reply.send(ok(row))
   })
 
-  fastify.delete('/pendidikan/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/pendidikan/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const [existing] = await db.select({ label: refPendidikan.label, kode: refPendidikan.kode }).from(refPendidikan).where(eq(refPendidikan.id, id)).limit(1)
     await db.delete(refPendidikan).where(eq(refPendidikan.id, id))
@@ -197,7 +198,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // ─── CRUD: Status Pernikahan ──────────────────────────────────────────────────
-  fastify.post('/status-pernikahan', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/status-pernikahan', { preHandler: adminOnly }, async (request, reply) => {
     const { kode, label } = request.body as { kode: string; label: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
 
@@ -210,7 +211,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     return reply.send(ok(row))
   })
 
-  fastify.put('/status-pernikahan/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/status-pernikahan/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { kode, label } = request.body as { kode: string; label: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
@@ -228,7 +229,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     return reply.send(ok(row))
   })
 
-  fastify.delete('/status-pernikahan/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/status-pernikahan/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const [existing] = await db.select({ label: refStatusPernikahan.label, kode: refStatusPernikahan.kode }).from(refStatusPernikahan).where(eq(refStatusPernikahan.id, id)).limit(1)
     await db.delete(refStatusPernikahan).where(eq(refStatusPernikahan.id, id))
@@ -243,7 +244,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // ─── CRUD: Grade ─────────────────────────────────────────────────────────────
-  fastify.post('/grade', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/grade', { preHandler: adminOnly }, async (request, reply) => {
     const { kode, label, level, keterangan } = request.body as { kode: string; label: string; level?: number; keterangan?: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
 
@@ -261,7 +262,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     return reply.send(ok(row))
   })
 
-  fastify.put('/grade/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/grade/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { kode, label, level, keterangan } = request.body as { kode: string; label: string; level?: number; keterangan?: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
@@ -284,7 +285,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     return reply.send(ok(row))
   })
 
-  fastify.delete('/grade/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/grade/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const [existing] = await db.select({ label: refGrade.label, kode: refGrade.kode }).from(refGrade).where(eq(refGrade.id, id)).limit(1)
     await db.delete(refGrade).where(eq(refGrade.id, id))
@@ -299,7 +300,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // GET /api/master/stats
-  fastify.get('/stats', { preHandler: authOnly }, async (request, reply) => {
+  fastify.get('/stats', { preHandler: adminOnly }, async (request, reply) => {
     const query = request.query as { year?: string; month?: string }
     const currentYear = query.year ? parseInt(query.year, 10) : new Date().getFullYear()
     const currentMonth = query.month ? parseInt(query.month, 10) : new Date().getMonth() + 1
@@ -314,7 +315,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // GET /api/master/logs
-  fastify.get('/logs', { preHandler: authOnly }, async (request, reply) => {
+  fastify.get('/logs', { preHandler: adminOnly }, async (request, reply) => {
     const query = request.query as {
       page?: string
       limit?: string
@@ -338,7 +339,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // GET /api/master/health
-  fastify.get('/health', { preHandler: authOnly }, async (_request, reply) => {
+  fastify.get('/health', { preHandler: adminOnly }, async (_request, reply) => {
     try {
       const uploadDir = path.resolve(config.upload.dir)
       
@@ -373,7 +374,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // POST /api/master/penempatan-area
-  fastify.post('/penempatan-area', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/penempatan-area', { preHandler: adminOnly }, async (request, reply) => {
     const { kode, nama, longitude, latitude } = request.body as { kode: string; nama: string; longitude: string; latitude: string }
     if (!validateRequired(reply, { kode, nama, longitude, latitude }, 'Kode, Nama, Longitude, dan Latitude wajib diisi.')) return
 
@@ -387,7 +388,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // PUT /api/master/penempatan-area/:id
-  fastify.put('/penempatan-area/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/penempatan-area/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { kode, nama, longitude, latitude } = request.body as { kode: string; nama: string; longitude: string; latitude: string }
     if (!validateRequired(reply, { kode, nama, longitude, latitude }, 'Kode, Nama, Longitude, dan Latitude wajib diisi.')) return
@@ -406,7 +407,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // DELETE /api/master/penempatan-area/:id
-  fastify.delete('/penempatan-area/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/penempatan-area/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const [existing] = await db.select({ nama: refPenempatanArea.nama }).from(refPenempatanArea).where(eq(refPenempatanArea.id, id)).limit(1)
     await db.delete(refPenempatanArea).where(eq(refPenempatanArea.id, id))
@@ -428,7 +429,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // POST /api/master/kategori-aplikasi
-  fastify.post('/kategori-aplikasi', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/kategori-aplikasi', { preHandler: adminOnly }, async (request, reply) => {
     const { kode, label } = request.body as { kode: string; label: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
 
@@ -442,7 +443,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // PUT /api/master/kategori-aplikasi/:id
-  fastify.put('/kategori-aplikasi/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/kategori-aplikasi/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { kode, label } = request.body as { kode: string; label: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
@@ -461,7 +462,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // DELETE /api/master/kategori-aplikasi/:id
-  fastify.delete('/kategori-aplikasi/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/kategori-aplikasi/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const [existing] = await db.select({ label: refKategoriAplikasi.label, kode: refKategoriAplikasi.kode }).from(refKategoriAplikasi).where(eq(refKategoriAplikasi.id, id)).limit(1)
     await db.delete(refKategoriAplikasi).where(eq(refKategoriAplikasi.id, id))
@@ -483,7 +484,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // POST /api/master/agama
-  fastify.post('/agama', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/agama', { preHandler: adminOnly }, async (request, reply) => {
     const { kode, label } = request.body as { kode: string; label: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
     const [row] = await db.insert(refAgama).values({ kode, label }).returning()
@@ -496,7 +497,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // PUT /api/master/agama/:id
-  fastify.put('/agama/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/agama/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const { kode, label } = request.body as { kode: string; label: string }
     if (!validateRequired(reply, { kode, label }, 'Kode dan Label wajib diisi.')) return
@@ -514,7 +515,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   })
 
   // DELETE /api/master/agama/:id
-  fastify.delete('/agama/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/agama/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const [existing] = await db.select({ label: refAgama.label, kode: refAgama.kode }).from(refAgama).where(eq(refAgama.id, id)).limit(1)
     await db.delete(refAgama).where(eq(refAgama.id, id))

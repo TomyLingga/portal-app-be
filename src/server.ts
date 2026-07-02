@@ -35,12 +35,71 @@ const fastify = Fastify({
   },
 })
 
+const allowedOrigins = new Set([
+  config.app.frontendUrl,
+  ...config.webauthn.expectedOrigins,
+])
+
+type RateBucket = { count: number; resetAt: number }
+const rateBuckets = new Map<string, RateBucket>()
+
+function rateLimitFor(ip: string, url: string) {
+  const pathOnly = url.split('?')[0]
+  const strictPaths = [
+    '/api/auth/login',
+    '/api/auth/login/totp-verify',
+    '/api/auth/passkey/login/options',
+    '/api/auth/passkey/login/verify',
+    '/api/auth/forgot-password',
+    '/api/auth/reset-password',
+    '/api/auth/refresh',
+  ]
+  const strict = strictPaths.includes(pathOnly)
+  return {
+    key: `${ip}:${strict ? pathOnly : 'global'}`,
+    limit: strict ? 20 : 600,
+    windowMs: 60_000,
+  }
+}
+
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 fastify.setErrorHandler(errorHandler)
 
 // ─── Plugins ──────────────────────────────────────────────────────────────────
 async function buildApp() {
-  await fastify.register(cors,    { origin: true, credentials: true })
+  fastify.addHook('onRequest', async (request, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff')
+    reply.header('X-Frame-Options', 'DENY')
+    reply.header('Referrer-Policy', 'no-referrer')
+    reply.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    if (config.app.nodeEnv === 'production') {
+      reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    }
+
+    const { key, limit, windowMs } = rateLimitFor(request.ip, request.url)
+    const now = Date.now()
+    const bucket = rateBuckets.get(key)
+    if (!bucket || bucket.resetAt <= now) {
+      rateBuckets.set(key, { count: 1, resetAt: now + windowMs })
+      return
+    }
+
+    bucket.count += 1
+    if (bucket.count > limit) {
+      return reply.code(429).send({ success: false, error: 'Terlalu banyak request. Silakan coba lagi nanti.' })
+    }
+  })
+
+  await fastify.register(cors, {
+    origin(origin, cb) {
+      if (!origin || allowedOrigins.has(origin)) {
+        cb(null, true)
+        return
+      }
+      cb(new Error('Origin tidak diizinkan'), false)
+    },
+    credentials: true,
+  })
   await fastify.register(multipart, {
     limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
   })
