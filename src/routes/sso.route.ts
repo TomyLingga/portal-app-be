@@ -74,6 +74,8 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
         gradeKode: refGrade.kode,
         unitNama: unitOrganisasi.nama,
         penempatanNama: refPenempatanArea.nama,
+        penempatanLat: refPenempatanArea.latitude,
+        penempatanLng: refPenempatanArea.longitude,
         atasanId: employee.atasanId,
       })
       .from(employee)
