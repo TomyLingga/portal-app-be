@@ -73,6 +73,7 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
         gradeLevel: refGrade.level,
         gradeKode: refGrade.kode,
         unitNama: unitOrganisasi.nama,
+        unitTipe: unitOrganisasi.tipe,
         penempatanNama: refPenempatanArea.nama,
         penempatanLat: refPenempatanArea.latitude,
         penempatanLng: refPenempatanArea.longitude,
