@@ -1,10 +1,10 @@
 // ─── Service: Employee ────────────────────────────────────────────────────────
 import { eq, ilike, and, count, or, SQL } from 'drizzle-orm'
 import { db }            from '../db'
-import { employee, activityLog, user }      from '../db/schema'
+import { employee, activityLog, user, unitOrganisasi } from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import { buildFileUrl, deleteFile }       from '../utils/file'
-import type { CreateEmployeeInput, UpdateEmployeeInput, ListEmployeeQuery } from '../validators/employee.validator'
+import type { CreateEmployeeInput, UpdateEmployeeInput, ImportEmployeeInput, ListEmployeeQuery } from '../validators/employee.validator'
 
 function withFileUrl(row: any) {
   return {
@@ -124,6 +124,127 @@ export async function createEmployeeService(input: CreateEmployeeInput, userId: 
   return withFileUrl(created)
 }
 
+const unitCodePrefix: Record<ImportEmployeeInput['unitPath'][number]['tipe'], string> = {
+  direktorat: 'DIR',
+  sevp: 'SEVP',
+  bagian: 'BAG',
+  sub_bagian: 'SUB',
+  seksi: 'SEK',
+}
+
+function normalizeUnitName(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+}
+
+function createUniqueUnitCode(name: string, tipe: ImportEmployeeInput['unitPath'][number]['tipe'], usedCodes: Set<string>) {
+  const words = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  const token = words.length > 1 ? words.map((word) => word[0]).join('') : (words[0] || 'UNIT').slice(0, 10)
+  const base = `${unitCodePrefix[tipe]}-${token}`.slice(0, 20)
+  let code = base
+  let suffix = 2
+  while (usedCodes.has(code)) {
+    const tail = `-${suffix}`
+    code = `${base.slice(0, 20 - tail.length)}${tail}`
+    suffix += 1
+  }
+  usedCodes.add(code)
+  return code
+}
+
+export async function importEmployeeService(input: ImportEmployeeInput, userId: string) {
+  return db.transaction(async (tx) => {
+    const [dupNrk] = await tx.select({ id: employee.id }).from(employee).where(eq(employee.nrk, input.nrk)).limit(1)
+    if (dupNrk) throw new Error('NRK sudah terdaftar')
+
+    if (input.nik) {
+      const [dupNik] = await tx.select({ id: employee.id }).from(employee).where(eq(employee.nik, input.nik)).limit(1)
+      if (dupNik) throw new Error('NIK sudah terdaftar')
+    }
+
+    const units = await tx.select().from(unitOrganisasi)
+    const usedCodes = new Set(units.map((unit) => unit.kode))
+    const createdUnits: Array<typeof unitOrganisasi.$inferSelect> = []
+    let parentId: string | null = null
+
+    for (const pathItem of input.unitPath) {
+      const wantedName = normalizeUnitName(pathItem.nama)
+      let unit = units.find((candidate) => (
+        normalizeUnitName(candidate.nama) === wantedName && candidate.parentId === parentId
+      ))
+
+      if (!unit) {
+        const createdRows: Array<typeof unitOrganisasi.$inferSelect> = await tx.insert(unitOrganisasi).values({
+          nama: pathItem.nama.trim(),
+          kode: createUniqueUnitCode(pathItem.nama, pathItem.tipe, usedCodes),
+          tipe: pathItem.tipe,
+          parentId,
+          isActive: true,
+        }).returning()
+        const createdUnit = createdRows[0]
+        if (!createdUnit) throw new Error(`Gagal membuat unit organisasi ${pathItem.nama}`)
+        unit = createdUnit
+        units.push(createdUnit)
+        createdUnits.push(createdUnit)
+        await tx.insert(activityLog).values({
+          userId,
+          action: 'create_unit_import',
+          details: `Membuat unit organisasi dari import employee: "${createdUnit.nama}" (Kode: ${createdUnit.kode})`,
+        })
+      }
+
+      if (!unit) throw new Error(`Unit organisasi ${pathItem.nama} tidak dapat diproses`)
+      parentId = unit.id
+    }
+
+    const { unitPath, ...employeeInput } = input
+    const [created] = await tx.insert(employee).values({
+      ...employeeInput,
+      nik: employeeInput.nik ?? null,
+      atasanId: null,
+      unitOrganisasiId: parentId,
+      tanggalMasuk: employeeInput.tanggalMasuk ?? null,
+      tempatLahir: employeeInput.tempatLahir ?? null,
+      tanggalLahir: employeeInput.tanggalLahir ?? null,
+      statusKaryawanId: employeeInput.statusKaryawanId ?? null,
+      pendidikanTerakhirId: employeeInput.pendidikanTerakhirId ?? null,
+      statusPernikahanId: employeeInput.statusPernikahanId ?? null,
+      penempatanAreaId: employeeInput.penempatanAreaId ?? null,
+      nomorHp: employeeInput.nomorHp ?? null,
+      alamat: employeeInput.alamat ?? null,
+      agama: employeeInput.agama ?? null,
+    }).returning()
+
+    await tx.insert(activityLog).values({
+      userId,
+      action: 'import_employee',
+      details: `Mengimport karyawan: ${created.nama} (NRK: ${created.nrk}), Unit: ${unitPath.map((item) => item.nama).join(' > ')}`,
+    })
+
+    return {
+      employee: withFileUrl(created),
+      createdUnits: createdUnits.map(({ id, nama, kode, tipe, parentId: unitParentId }) => ({
+        id,
+        nama,
+        kode,
+        tipe,
+        parentId: unitParentId,
+      })),
+    }
+  })
+}
+
 export async function updateEmployeeService(id: string, input: UpdateEmployeeInput, userId: string) {
   const [existing] = await db
     .select({ id: employee.id })
@@ -132,6 +253,16 @@ export async function updateEmployeeService(id: string, input: UpdateEmployeeInp
     .limit(1)
 
   if (!existing) throw new Error('Employee tidak ditemukan')
+
+  if (input.nrk) {
+    const [dupNrk] = await db.select({ id: employee.id }).from(employee).where(eq(employee.nrk, input.nrk)).limit(1)
+    if (dupNrk && dupNrk.id !== id) throw new Error('NRK sudah terdaftar pada karyawan lain')
+  }
+
+  if (input.nik) {
+    const [dupNik] = await db.select({ id: employee.id }).from(employee).where(eq(employee.nik, input.nik)).limit(1)
+    if (dupNik && dupNik.id !== id) throw new Error('NIK sudah terdaftar pada karyawan lain')
+  }
 
   const [updated] = await db
     .update(employee)

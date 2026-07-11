@@ -1,6 +1,11 @@
 // ─── Validators: Employee ─────────────────────────────────────────────────────
 import { z } from 'zod'
 
+const importUnitPathItemSchema = z.object({
+  nama: z.string().trim().min(1).max(150),
+  tipe: z.enum(['direktorat', 'sevp', 'bagian', 'sub_bagian', 'seksi']),
+})
+
 export const createEmployeeSchema = z.object({
   nrk:                  z.string().min(1, 'NRK wajib diisi').max(50),
   nik:                  z.string().min(16, 'NIK harus 16 digit').max(16, 'NIK harus 16 digit'),
@@ -25,6 +30,27 @@ export const createEmployeeSchema = z.object({
 
 export const updateEmployeeSchema = createEmployeeSchema.partial()
 
+export const importEmployeeSchema = z.object({
+  nrk:                  z.string().trim().min(1, 'NRK wajib diisi').max(50),
+  nik:                  z.string().length(16, 'NIK harus 16 digit').nullable().optional(),
+  nama:                 z.string().trim().min(1, 'Nama wajib diisi').max(150),
+  jenisKelamin:         z.enum(['L', 'P'], { message: 'Jenis Kelamin wajib diisi' }),
+  jabatan:              z.string().trim().min(1, 'Jabatan wajib diisi').max(150),
+  gradeId:              z.string().uuid('Grade wajib diisi'),
+  unitPath:             z.array(importUnitPathItemSchema).min(1, 'Unit organisasi wajib diisi').max(5),
+  tanggalMasuk:         z.string().date('Format tanggal masuk tidak valid').nullable().optional(),
+  tempatLahir:          z.string().trim().max(100).nullable().optional(),
+  tanggalLahir:         z.string().date('Format tanggal lahir tidak valid').nullable().optional(),
+  statusKaryawanId:     z.string().uuid().nullable().optional(),
+  pendidikanTerakhirId: z.string().uuid().nullable().optional(),
+  statusPernikahanId:   z.string().uuid().nullable().optional(),
+  penempatanAreaId:     z.string().uuid().nullable().optional(),
+  nomorHp:              z.string().trim().max(20).nullable().optional(),
+  alamat:               z.string().trim().nullable().optional(),
+  agama:                z.string().trim().max(50).nullable().optional(),
+  isActive:             z.boolean().default(true),
+})
+
 export const listEmployeeQuerySchema = z.object({
   page:             z.coerce.number().int().min(1).default(1),
   limit:            z.coerce.number().int().min(1).max(1000).default(20),
@@ -36,4 +62,5 @@ export const listEmployeeQuerySchema = z.object({
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>
+export type ImportEmployeeInput = z.infer<typeof importEmployeeSchema>
 export type ListEmployeeQuery   = z.infer<typeof listEmployeeQuerySchema>

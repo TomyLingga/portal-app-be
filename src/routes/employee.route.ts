@@ -2,11 +2,11 @@
 import { FastifyInstance }   from 'fastify'
 import { MultipartFile }     from '@fastify/multipart'
 import {
-  createEmployeeSchema, updateEmployeeSchema, listEmployeeQuerySchema,
+  createEmployeeSchema, updateEmployeeSchema, importEmployeeSchema, listEmployeeQuerySchema,
 } from '../validators/employee.validator'
 import {
   listEmployeesService, getEmployeeByIdService, createEmployeeService,
-  updateEmployeeService, deleteEmployeeService, updateEmployeePhotoService,
+  importEmployeeService, updateEmployeeService, deleteEmployeeService, updateEmployeePhotoService,
 } from '../services/employee.service'
 import { saveUploadedFile }  from '../utils/file'
 import { ok }                from '../utils/response'
@@ -26,6 +26,13 @@ export default async function employeeRoutes(fastify: FastifyInstance) {
   fastify.post('/', { preHandler: adminOnly }, async (request, reply) => {
     const input  = createEmployeeSchema.parse(request.body)
     const result = await createEmployeeService(input, request.user.sub)
+    return reply.code(201).send(ok(result))
+  })
+
+  // POST /api/employees/import - import satu baris dan buat unit yang belum tersedia.
+  fastify.post('/import', { preHandler: adminOnly }, async (request, reply) => {
+    const input = importEmployeeSchema.parse(request.body)
+    const result = await importEmployeeService(input, request.user.sub)
     return reply.code(201).send(ok(result))
   })
 

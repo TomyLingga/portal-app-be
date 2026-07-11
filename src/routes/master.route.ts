@@ -3,11 +3,11 @@ import { FastifyInstance, FastifyReply }   from 'fastify'
 import path from 'path'
 import { config } from '../config/env'
 import { db }                from '../db'
-import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade, refTipeUnit, refPenempatanArea, refKategoriAplikasi, refAgama, activityLog } from '../db/schema'
+import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade, refTipeUnit, refPenempatanArea, refKategoriAplikasi, refAgama, activityLog, aplikasi } from '../db/schema'
 import { ok }                from '../utils/response'
 import { eq, desc }          from 'drizzle-orm'
 import { getMasterStatsService, getPaginatedLogsService } from '../services/master.service'
-import { checkDomainStatus, checkDatabaseStatus, checkStorageStatus, checkSSLCertificate } from '../services/health.service'
+import { checkDomainStatus, checkDatabaseStatus, checkStorageStatus, checkSSLCertificate, checkAppStatus } from '../services/health.service'
 
 /**
  * Helper to validate required request body fields.
@@ -342,13 +342,25 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   fastify.get('/health', { preHandler: adminOnly }, async (_request, reply) => {
     try {
       const uploadDir = path.resolve(config.upload.dir)
-      
-      const [domain, database, storage, ssl] = await Promise.all([
+
+      const [domain, database, storage, ssl, activeApps] = await Promise.all([
         checkDomainStatus('inl.co.id'),
         checkDatabaseStatus(),
         checkStorageStatus(uploadDir),
-        checkSSLCertificate('inl.co.id')
+        checkSSLCertificate('inl.co.id'),
+        db.select({ id: aplikasi.id, nama: aplikasi.nama, url: aplikasi.url, icon: aplikasi.icon })
+          .from(aplikasi)
+          .where(eq(aplikasi.isActive, true))
+          .orderBy(aplikasi.urutan),
       ])
+
+      // Cek keterjangkauan (reachability) tiap aplikasi SSO yang terdaftar & aktif,
+      // supaya "Status Layanan" benar-benar merefleksikan kondisi aplikasi terhubung,
+      // bukan cuma infrastruktur internal portal.
+      const apps = await Promise.all(activeApps.map(async (app) => {
+        const result = await checkAppStatus(app.url)
+        return { id: app.id, nama: app.nama, url: app.url, icon: app.icon, ...result }
+      }))
 
       return reply.send(ok({
         uptime: process.uptime(),
@@ -359,7 +371,8 @@ export default async function masterRoutes(fastify: FastifyInstance) {
         },
         database,
         storage,
-        ssl
+        ssl,
+        apps,
       }))
     } catch (error) {
       fastify.log.error(error)

@@ -10,7 +10,7 @@ const genUUID = () => crypto.randomUUID()
 export const employee = pgTable('employee', {
   id:                   uuid('id').primaryKey().$defaultFn(genUUID),
   nrk:                  varchar('nrk',       { length: 50  }).notNull().unique(),
-  nik:                  varchar('nik',       { length: 20  }).notNull().unique(),
+  nik:                  varchar('nik',       { length: 20  }).unique(),
   nama:                 varchar('nama',      { length: 150 }).notNull(),
   jenisKelamin:         varchar('jenis_kelamin', { length: 1 }).notNull(), // 'L' | 'P'
   jabatan:              varchar('jabatan',   { length: 150 }).notNull(),

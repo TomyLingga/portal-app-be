@@ -9,7 +9,7 @@ export const createAplikasiSchema = z.object({
   deskripsi: z.string().optional().nullable(),
   urutan:    z.number().int().min(0).default(0),
   isActive:  z.boolean().default(true),
-  warna:     z.string().max(50).optional().default('#3b82f6'),
+  warna:     z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Warna harus dalam format hex, misalnya #D97706.').optional().default('#D97706'),
   kategori:  z.string().max(100).optional().default('Lainnya'),
 })
 

@@ -31,6 +31,26 @@ export function checkDomainStatus(host: string): Promise<{ status: 'online' | 'o
 }
 
 /**
+ * Checks whether an arbitrary app URL (http/https, local or remote) is reachable,
+ * measuring response latency. Used to monitor the actual connected SSO applications
+ * (registered in the `aplikasi` table), not just the portal's own infrastructure.
+ */
+export async function checkAppStatus(url: string, timeoutMs = 4000): Promise<{ status: 'online' | 'offline'; latency: number }> {
+  const start = Date.now()
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { signal: controller.signal, method: 'GET' })
+    const latency = Date.now() - start
+    return { status: res.status < 500 ? 'online' : 'offline', latency }
+  } catch {
+    return { status: 'offline', latency: 0 }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
  * Checks PostgreSQL query response latency using Drizzle.
  */
 export async function checkDatabaseStatus(): Promise<{ status: 'online' | 'offline'; latency: number }> {

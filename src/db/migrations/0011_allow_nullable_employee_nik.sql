@@ -1,0 +1,1 @@
+ALTER TABLE "employee" ALTER COLUMN "nik" DROP NOT NULL;
