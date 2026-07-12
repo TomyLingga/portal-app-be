@@ -86,7 +86,7 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
       .leftJoin(refPenempatanArea, eq(employee.penempatanAreaId, refPenempatanArea.id))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(refGrade.level, employee.nama)
-      .limit(100)
+      .limit(500)
 
     return reply.send(ok(rows))
   })

@@ -43,6 +43,14 @@ const allowedOrigins = new Set([
 type RateBucket = { count: number; resetAt: number }
 const rateBuckets = new Map<string, RateBucket>()
 
+// Evict expired rate-limit buckets every 5 minutes to prevent memory leak
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, bucket] of rateBuckets) {
+    if (bucket.resetAt <= now) rateBuckets.delete(key)
+  }
+}, 5 * 60_000).unref()
+
 function rateLimitFor(ip: string, url: string) {
   const pathOnly = url.split('?')[0]
   const strictPaths = [
