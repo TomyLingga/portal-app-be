@@ -20,7 +20,7 @@ export async function generatePasskeyRegistrationOptionsService(fastify: Fastify
   let displayName = user.email
   if (user.employeeId) {
     const [emp] = await db.select().from(employee).where(eq(employee.id, user.employeeId)).limit(1)
-    if (emp) displayName = emp.nama
+    if (emp && emp.nama) displayName = emp.nama
   }
 
   // Get user's existing passkeys

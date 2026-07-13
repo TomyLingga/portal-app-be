@@ -31,11 +31,11 @@ export const createEmployeeSchema = z.object({
 export const updateEmployeeSchema = createEmployeeSchema.partial()
 
 export const importEmployeeSchema = z.object({
-  nrk:                  z.string().trim().min(1, 'NRK wajib diisi').max(50),
+  nrk:                  z.string().trim().min(1).max(50).nullable().optional(),
   nik:                  z.string().length(16, 'NIK harus 16 digit').nullable().optional(),
-  nama:                 z.string().trim().min(1, 'Nama wajib diisi').max(150),
-  jenisKelamin:         z.enum(['L', 'P'], { message: 'Jenis Kelamin wajib diisi' }),
-  jabatan:              z.string().trim().min(1, 'Jabatan wajib diisi').max(150),
+  nama:                 z.string().trim().min(1).max(150).nullable().optional(),
+  jenisKelamin:         z.enum(['L', 'P']).nullable().optional(),
+  jabatan:              z.string().trim().min(1).max(150).nullable().optional(),
   gradeId:              z.string().uuid('Grade wajib diisi'),
   unitPath:             z.array(importUnitPathItemSchema).min(1, 'Unit organisasi wajib diisi').max(5),
   tanggalMasuk:         z.string().date('Format tanggal masuk tidak valid').nullable().optional(),
@@ -48,6 +48,8 @@ export const importEmployeeSchema = z.object({
   nomorHp:              z.string().trim().max(20).nullable().optional(),
   alamat:               z.string().trim().nullable().optional(),
   agama:                z.string().trim().max(50).nullable().optional(),
+  // Jika email diisi, sistem otomatis membuat akun user (role user, password default).
+  email:                z.string().email('Email tidak valid').nullable().optional(),
   isActive:             z.boolean().default(true),
 })
 

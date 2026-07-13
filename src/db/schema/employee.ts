@@ -9,11 +9,14 @@ const genUUID = () => crypto.randomUUID()
 
 export const employee = pgTable('employee', {
   id:                   uuid('id').primaryKey().$defaultFn(genUUID),
-  nrk:                  varchar('nrk',       { length: 50  }).notNull().unique(),
+  // nrk/nama/jabatan/jenisKelamin dibuat nullable: sebagian data karyawan (mis. hasil
+  // import Excel) tidak selalu memiliki nilai ini. Postgres mengizinkan banyak NULL
+  // pada kolom unique, sehingga nrk tetap unik saat terisi.
+  nrk:                  varchar('nrk',       { length: 50  }).unique(),
   nik:                  varchar('nik',       { length: 20  }).unique(),
-  nama:                 varchar('nama',      { length: 150 }).notNull(),
-  jenisKelamin:         varchar('jenis_kelamin', { length: 1 }).notNull(), // 'L' | 'P'
-  jabatan:              varchar('jabatan',   { length: 150 }).notNull(),
+  nama:                 varchar('nama',      { length: 150 }),
+  jenisKelamin:         varchar('jenis_kelamin', { length: 1 }), // 'L' | 'P'
+  jabatan:              varchar('jabatan',   { length: 150 }),
   gradeId:              uuid('grade_id').references(() => refGrade.id),
   atasanId:             uuid('atasan_id').references((): any => employee.id),
   unitOrganisasiId:     uuid('unit_organisasi_id').references(() => unitOrganisasi.id),

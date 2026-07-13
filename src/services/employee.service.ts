@@ -4,7 +4,11 @@ import { db }            from '../db'
 import { employee, activityLog, user, unitOrganisasi } from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import { buildFileUrl, deleteFile }       from '../utils/file'
+import { hashPassword }                    from '../utils/hash'
 import type { CreateEmployeeInput, UpdateEmployeeInput, ImportEmployeeInput, ListEmployeeQuery } from '../validators/employee.validator'
+
+// Password default untuk akun yang dibuat otomatis saat import employee.
+const IMPORT_DEFAULT_PASSWORD = 'User@123'
 
 function withFileUrl(row: any) {
   return {
@@ -139,6 +143,13 @@ function normalizeUnitName(value: string) {
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')
+    // Samakan angka Romawi umum dgn angka Arab agar "PMG II" = "PMG 2", dst.
+    // Hindari duplikat unit karena beda penulisan angka.
+    .replace(/\biii\b/g, '3')
+    .replace(/\bii\b/g, '2')
+    .replace(/\biv\b/g, '4')
+    .replace(/\bi\b/g, '1')
+    .replace(/\bv\b/g, '5')
 }
 
 function createUniqueUnitCode(name: string, tipe: ImportEmployeeInput['unitPath'][number]['tipe'], usedCodes: Set<string>) {
@@ -165,8 +176,10 @@ function createUniqueUnitCode(name: string, tipe: ImportEmployeeInput['unitPath'
 
 export async function importEmployeeService(input: ImportEmployeeInput, userId: string) {
   return db.transaction(async (tx) => {
-    const [dupNrk] = await tx.select({ id: employee.id }).from(employee).where(eq(employee.nrk, input.nrk)).limit(1)
-    if (dupNrk) throw new Error('NRK sudah terdaftar')
+    if (input.nrk) {
+      const [dupNrk] = await tx.select({ id: employee.id }).from(employee).where(eq(employee.nrk, input.nrk)).limit(1)
+      if (dupNrk) throw new Error('NRK sudah terdaftar')
+    }
 
     if (input.nik) {
       const [dupNik] = await tx.select({ id: employee.id }).from(employee).where(eq(employee.nik, input.nik)).limit(1)
@@ -208,10 +221,14 @@ export async function importEmployeeService(input: ImportEmployeeInput, userId: 
       parentId = unit.id
     }
 
-    const { unitPath, ...employeeInput } = input
+    const { unitPath, email, ...employeeInput } = input
     const [created] = await tx.insert(employee).values({
       ...employeeInput,
+      nrk: employeeInput.nrk ?? null,
       nik: employeeInput.nik ?? null,
+      nama: employeeInput.nama ?? null,
+      jenisKelamin: employeeInput.jenisKelamin ?? null,
+      jabatan: employeeInput.jabatan ?? null,
       atasanId: null,
       unitOrganisasiId: parentId,
       tanggalMasuk: employeeInput.tanggalMasuk ?? null,
@@ -229,11 +246,34 @@ export async function importEmployeeService(input: ImportEmployeeInput, userId: 
     await tx.insert(activityLog).values({
       userId,
       action: 'import_employee',
-      details: `Mengimport karyawan: ${created.nama} (NRK: ${created.nrk}), Unit: ${unitPath.map((item) => item.nama).join(' > ')}`,
+      details: `Mengimport karyawan: ${created.nama ?? '(tanpa nama)'} (NRK: ${created.nrk ?? '-'}), Unit: ${unitPath.map((item) => item.nama).join(' > ')}`,
     })
+
+    // Buat akun user otomatis bila email tersedia dan belum terpakai.
+    let createdUser: { id: string; email: string } | null = null
+    if (email) {
+      const [existingUser] = await tx.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
+      if (!existingUser) {
+        const passwordHash = await hashPassword(IMPORT_DEFAULT_PASSWORD)
+        const [newUser] = await tx.insert(user).values({
+          email,
+          passwordHash,
+          role: 'user',
+          isActive: true,
+          employeeId: created.id,
+        }).returning({ id: user.id, email: user.email })
+        createdUser = newUser
+        await tx.insert(activityLog).values({
+          userId,
+          action: 'import_user',
+          details: `Membuat akun user dari import employee: ${newUser.email} (password default)`,
+        })
+      }
+    }
 
     return {
       employee: withFileUrl(created),
+      createdUser,
       createdUnits: createdUnits.map(({ id, nama, kode, tipe, parentId: unitParentId }) => ({
         id,
         nama,

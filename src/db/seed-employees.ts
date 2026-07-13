@@ -114,9 +114,10 @@ function normalizePenempatan(raw: string | number | null | undefined): string | 
   if (!raw || raw === '-') return null
   if (typeof raw === 'number') return null
   const p = raw.trim().toLowerCase()
-  if (p.includes('sei mangkei') || p.includes('head office')) return 'PKS_SEI_MANGKEI'
+  // MO_INL = Manufacturing Operation INL (kantor & pabrik utama di KEK Sei Mangkei)
+  if (p.includes('mo_inl') || p.includes('mo inl') || p.includes('sei mangkei') || p.includes('head office')) return 'PKS_SEI_MANGKEI'
   if (p.includes('medan') || p.includes('ro medan')) return 'KDI_MEDAN'
-  if (p.includes('kuala tanjung')) return 'GDG_KUALA_TANJUNG'
+  if (p.includes('kuala tanjung') || p.includes('pti kuala tanjung')) return 'GDG_KUALA_TANJUNG'
   return null
 }
 
@@ -550,7 +551,7 @@ async function seedEmployees() {
   // ── Pass 3: Create user accounts for ALL employees with email ──────────────
   console.log('   → Creating user accounts for all employees with email...')
   const { hashPassword } = await import('../utils/hash')
-  const defaultPasswordHash = await hashPassword('Welcome@123')
+  const defaultPasswordHash = await hashPassword('User@123')
 
   let usersCreated = 0
   let usersLinked = 0
@@ -577,7 +578,7 @@ async function seedEmployees() {
   }
 
   console.log(`   ✅ ${usersCreated} user accounts created, ${usersLinked} existing accounts linked`)
-  console.log(`      Default password: Welcome@123\n`)
+  console.log(`      Default password: User@123\n`)
 
   // ── Re-link admin user ─────────────────────────────────────────────────────
   const adminExists = await db.select({ id: user.id }).from(user).where(eq(user.email, 'admin@inl.co.id'))
