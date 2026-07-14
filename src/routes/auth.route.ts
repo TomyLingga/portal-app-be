@@ -176,7 +176,10 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/totp/disable', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    const { password } = request.body as { password?: string }
+    const { password } = request.body as { password: string }
+    if (!password) {
+      return reply.code(400).send({ success: false, error: 'Password diperlukan untuk menonaktifkan 2FA' })
+    }
     const result = await disableTotpService(request.user.sub, password)
     return reply.code(200).send(ok(result))
   })

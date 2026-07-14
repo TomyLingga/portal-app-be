@@ -28,6 +28,11 @@ const envSchema = z.object({
   SSO_TOKEN_EXPIRES_IN: z.string().default('5m'),
   SSO_INTERNAL_TOKEN: z.string().default('secret_development_token'),
 
+  // Monitoring (Status Layanan) — domain publik yang benar-benar dipantau
+  // (reachability + sertifikat SSL). Kosongkan untuk auto-derive dari
+  // WEBAUTHN_RP_ID / FRONTEND_URL, biar akurat mengikuti deployment nyata.
+  MONITOR_DOMAIN: z.string().optional(),
+
   // Upload
   UPLOAD_DIR: z.string().default('uploads'),
   UPLOAD_URL: z.string().url().optional(),
@@ -72,6 +77,20 @@ if (!parsed.success) {
 
 const env = parsed.data
 
+// Domain publik yang dipantau Status Layanan. Prioritas: MONITOR_DOMAIN eksplisit
+// → WEBAUTHN_RP_ID (kalau bukan localhost, ini domain portal sungguhan) → host
+// dari FRONTEND_URL. Dengan begini Domain & SSL memeriksa deployment nyata,
+// bukan situs pihak ketiga yang selalu online.
+function deriveMonitorDomain(): string {
+  if (env.MONITOR_DOMAIN && env.MONITOR_DOMAIN.trim()) return env.MONITOR_DOMAIN.trim()
+  if (env.WEBAUTHN_RP_ID && env.WEBAUTHN_RP_ID !== 'localhost') return env.WEBAUTHN_RP_ID
+  try {
+    return new URL(env.FRONTEND_URL).hostname
+  } catch {
+    return 'localhost'
+  }
+}
+
 export const config = {
   db: {
     host:     env.DB_HOST,
@@ -96,6 +115,9 @@ export const config = {
   sso: {
     tokenExpiresIn: env.SSO_TOKEN_EXPIRES_IN,
     internalToken:  env.SSO_INTERNAL_TOKEN,
+  },
+  monitor: {
+    domain: deriveMonitorDomain(),
   },
   upload: {
     dir: env.UPLOAD_DIR,

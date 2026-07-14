@@ -1,8 +1,26 @@
-# Konversi users_2_FINAL_FIX_FIX_NOW_FORMAT.xlsx -> employee-data.json
+# Konversi workbook import employee -> src/db/employee-data.json
 # Menangani notasi ilmiah (nrk/nik/noHP) dan format tanggal
+param(
+  [string]$InputPath,
+  [string]$OutputPath
+)
+
 $ErrorActionPreference = 'Stop'
-$xlsxPath = "D:\SMKAW02PDN\Laporan PKL\Project\SSO\users_2_FINAL_FIX_FIX_NOW_FORMAT.xlsx"
-$jsonPath = "D:\SMKAW02PDN\Laporan PKL\Project\SSO\portal-app-be\src\db\employee-data.json"
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$xlsxPath = if ($InputPath) {
+  [System.IO.Path]::GetFullPath($InputPath)
+} else {
+  Join-Path $repoRoot 'data\import\DATA_EMPLOYEE_FINAL1000KALI_FULL.xlsx'
+}
+$jsonPath = if ($OutputPath) {
+  [System.IO.Path]::GetFullPath($OutputPath)
+} else {
+  Join-Path $repoRoot 'src\db\employee-data.json'
+}
+
+if (-not (Test-Path -LiteralPath $xlsxPath)) {
+  throw "File Excel tidak ditemukan: $xlsxPath"
+}
 
 $excel = New-Object -ComObject Excel.Application
 $excel.Visible = $false

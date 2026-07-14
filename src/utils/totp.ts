@@ -97,7 +97,7 @@ export function verifyTOTP(secret: string, token: string, window: number = 1): b
   if (cleanToken.length !== 6 || isNaN(Number(cleanToken))) {
     return false
   }
-  
+
   const now = Date.now()
   for (let i = -window; i <= window; i++) {
     const calculated = generateTOTP(secret, now + i * 30000)
@@ -106,6 +106,27 @@ export function verifyTOTP(secret: string, token: string, window: number = 1): b
     }
   }
   return false
+}
+
+/**
+ * Seperti verifyTOTP tetapi mengembalikan nomor step (30-detik) yang cocok, atau
+ * null bila tidak valid. Step dipakai pemanggil untuk mencegah replay: sebuah kode
+ * hanya boleh dipakai sekali (step yang sama tidak boleh diterima dua kali).
+ */
+export function verifyTOTPStep(secret: string, token: string, window: number = 1): number | null {
+  const cleanToken = token.trim().replace(/\s/g, '')
+  if (cleanToken.length !== 6 || isNaN(Number(cleanToken))) {
+    return null
+  }
+
+  const now = Date.now()
+  for (let i = -window; i <= window; i++) {
+    const ts = now + i * 30000
+    if (generateTOTP(secret, ts) === cleanToken) {
+      return Math.floor(ts / 30000)
+    }
+  }
+  return null
 }
 
 /**

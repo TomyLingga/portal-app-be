@@ -7,7 +7,7 @@ import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade, refTip
 import { ok }                from '../utils/response'
 import { eq, desc }          from 'drizzle-orm'
 import { getMasterStatsService, getPaginatedLogsService } from '../services/master.service'
-import { checkDomainStatus, checkDatabaseStatus, checkStorageStatus, checkSSLCertificate, checkAppStatus } from '../services/health.service'
+import { checkDomainStatus, checkDatabaseStatus, checkStorageStatus, checkSSLCertificate, checkAppStatus, checkApiStatus } from '../services/health.service'
 
 /**
  * Helper to validate required request body fields.
@@ -342,12 +342,14 @@ export default async function masterRoutes(fastify: FastifyInstance) {
   fastify.get('/health', { preHandler: adminOnly }, async (_request, reply) => {
     try {
       const uploadDir = path.resolve(config.upload.dir)
+      const monitorDomain = config.monitor.domain
 
-      const [domain, database, storage, ssl, activeApps] = await Promise.all([
-        checkDomainStatus('inl.co.id'),
+      const [domain, database, storage, ssl, api, activeApps] = await Promise.all([
+        checkDomainStatus(monitorDomain),
         checkDatabaseStatus(),
         checkStorageStatus(uploadDir),
-        checkSSLCertificate('inl.co.id'),
+        checkSSLCertificate(monitorDomain),
+        checkApiStatus(),
         db.select({ id: aplikasi.id, nama: aplikasi.nama, url: aplikasi.url, icon: aplikasi.icon })
           .from(aplikasi)
           .where(eq(aplikasi.isActive, true))
@@ -364,14 +366,17 @@ export default async function masterRoutes(fastify: FastifyInstance) {
 
       return reply.send(ok({
         uptime: process.uptime(),
-        domain,
+        // Sertakan host yang dipantau agar frontend menampilkan target sungguhan,
+        // bukan label statis.
+        domain: { ...domain, host: monitorDomain },
         api: {
-          status: 'online',
+          status: api.status,
+          lagMs: api.lagMs,
           timestamp: new Date().toISOString()
         },
         database,
         storage,
-        ssl,
+        ssl: { ...ssl, host: monitorDomain },
         apps,
       }))
     } catch (error) {

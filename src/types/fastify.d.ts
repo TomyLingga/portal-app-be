@@ -10,12 +10,14 @@ declare module '@fastify/jwt' {
       email:        string
       role:         'user' | 'super_admin'
       tokenVersion: number
+      purpose?:     string
     }
     user: {
       sub:          string
       email:        string
       role:         'user' | 'super_admin'
       tokenVersion: number
+      purpose?:     string
     }
   }
 }

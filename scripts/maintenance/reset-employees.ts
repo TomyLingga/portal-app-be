@@ -3,16 +3,16 @@
 // untuk persiapan import ulang dari Excel. User TANPA employeeId (admin/seed)
 // DIPERTAHANKAN. unit_organisasi TIDAK disentuh.
 //
-// Sebelum menghapus, script membuat backup JSON ke src/db/backups/.
+// Sebelum menghapus, script membuat backup JSON ke data/backups/.
 // Cascade otomatis membersihkan: refresh_token, sso_token, user_passkey,
 // app_user_access, dan activity_log milik user yang dihapus.
 //
-// Jalankan: npx tsx src/db/reset-employees.ts
+// Jalankan: npx tsx scripts/maintenance/reset-employees.ts
 import { writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { isNotNull, sql } from 'drizzle-orm'
-import { db } from './index'
-import { employee, user } from './schema'
+import { db } from '../../src/db/index'
+import { employee, user } from '../../src/db/schema'
 
 async function main() {
   console.log('🔎  Menghitung data saat ini...')
@@ -24,7 +24,7 @@ async function main() {
   console.log(`   user tanpa employee     : ${usrKeep}  (DIPERTAHANKAN)`)
 
   // ── Backup ──────────────────────────────────────────────────────────────────
-  const backupDir = join(__dirname, 'backups')
+  const backupDir = join(process.cwd(), 'data', 'backups')
   mkdirSync(backupDir, { recursive: true })
   const stamp = new Date().toISOString().replace(/[:.]/g, '-')
   const employeesData = await db.select().from(employee)

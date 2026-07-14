@@ -33,6 +33,7 @@ const fastify = Fastify({
       ? { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } }
       : undefined,
   },
+  trustProxy: true,
 })
 
 const allowedOrigins = new Set([

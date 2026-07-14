@@ -28,6 +28,9 @@ export const user = pgTable('user', {
   employeeId:   uuid('employee_id').references(() => employee.id).unique(), // one-to-one
   totpSecret:   text('totp_secret'),
   totpEnabled:  boolean('totp_enabled').notNull().default(false),
+  // Step TOTP terakhir yang berhasil dipakai login — mencegah replay kode yang
+  // sama dalam window validitas (±30 dtk). Null = belum pernah verifikasi.
+  totpLastStep: integer('totp_last_step'),
   createdAt:    timestamp('created_at').notNull().defaultNow(),
   updatedAt:    timestamp('updated_at').notNull().defaultNow(),
 })

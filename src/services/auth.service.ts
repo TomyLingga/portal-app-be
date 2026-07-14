@@ -8,7 +8,7 @@ import { sendMail } from '../utils/mailer'
 import { LoginInput }    from '../validators/auth.validator'
 import { config }        from '../config/env'
 import { buildFileUrl }  from '../utils/file'
-import { generateTOTPSecret, verifyTOTP, getTOTPKeyURI } from '../utils/totp'
+import { generateTOTPSecret, verifyTOTP, verifyTOTPStep, getTOTPKeyURI } from '../utils/totp'
 import type { FastifyInstance } from 'fastify'
 
 // ─── Helper: parse expiry string ke ms ────────────────────────────────────────
@@ -234,13 +234,16 @@ export async function verifyTotpLoginService(
   if (!user.isActive) throw new Error('Akun dinonaktifkan')
   if (!user.totpSecret) throw new Error('Authenticator belum dikonfigurasi')
 
-  const valid = verifyTOTP(user.totpSecret, code)
-  if (!valid) {
+  const step = verifyTOTPStep(user.totpSecret, code)
+  if (step === null) {
     throw new Error('Kode Authenticator salah atau kadaluwarsa')
   }
+  if (user.totpLastStep !== null && step <= user.totpLastStep) {
+    throw new Error('Kode sudah digunakan, tunggu kode berikutnya')
+  }
 
-  // Update lastLogin
-  await db.update(userTable).set({ lastLogin: new Date() }).where(eq(userTable.id, user.id))
+  // Update lastLogin + catat step terakhir untuk replay protection
+  await db.update(userTable).set({ lastLogin: new Date(), totpLastStep: step }).where(eq(userTable.id, user.id))
 
   // Log activity
   try {
@@ -316,14 +319,12 @@ export async function enableTotpService(userId: string, secret: string, code: st
   return { success: true }
 }
 
-export async function disableTotpService(userId: string, password?: string) {
+export async function disableTotpService(userId: string, password: string) {
   const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
   if (!user) throw new Error('User tidak ditemukan')
 
-  if (password) {
-    const valid = await verifyPassword(password, user.passwordHash)
-    if (!valid) throw new Error('Password salah')
-  }
+  const valid = await verifyPassword(password, user.passwordHash)
+  if (!valid) throw new Error('Password salah')
 
   await db
     .update(userTable)
@@ -359,7 +360,8 @@ export async function forgotPasswordService(fastify: FastifyInstance, email: str
       sub: user.id,
       email: user.email,
       role: user.role,
-      tokenVersion: user.tokenVersion
+      tokenVersion: user.tokenVersion,
+      purpose: 'password_reset',
     },
     { expiresIn: '15m' }
   )
@@ -391,14 +393,18 @@ export async function forgotPasswordService(fastify: FastifyInstance, email: str
     fastify.log.error({ err, userId: user.id }, 'Failed to send password reset email')
   })
 
-  return { message: 'Link reset password telah dikirim ke email Anda.' }
+  return { message: 'Link reset password telah dikirim jika email terdaftar.' }
 }
 
 export async function resetPasswordService(fastify: FastifyInstance, token: string, passwordNew: string) {
-  let decoded: { sub: string; email: string; role: 'user' | 'super_admin'; tokenVersion: number }
+  let decoded: { sub: string; email: string; role: 'user' | 'super_admin'; tokenVersion: number; purpose?: string }
   try {
     decoded = fastify.jwt.verify(token) as any
   } catch (err) {
+    throw new Error('Tautan reset password tidak valid atau telah kedaluwarsa')
+  }
+
+  if (decoded.purpose !== 'password_reset') {
     throw new Error('Tautan reset password tidak valid atau telah kedaluwarsa')
   }
 

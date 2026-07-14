@@ -51,10 +51,26 @@ export async function checkAppStatus(url: string, timeoutMs = 4000): Promise<{ s
 }
 
 /**
+ * Mengukur responsivitas API portal itu sendiri lewat event-loop lag.
+ * Nilainya benar-benar dinamis (naik ketika server sibuk), bukan konstanta
+ * `'online'` — sehingga lane API di Status Layanan merefleksikan kondisi nyata.
+ */
+export function checkApiStatus(): Promise<{ status: 'online' | 'warning'; lagMs: number }> {
+  return new Promise((resolve) => {
+    const start = process.hrtime.bigint()
+    // Selisih antara jadwal setImmediate dan eksekusi sesungguhnya = event-loop lag.
+    setImmediate(() => {
+      const lagMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6)
+      // >200ms menandakan event loop tertahan (beban tinggi) → perlu perhatian.
+      resolve({ status: lagMs > 200 ? 'warning' : 'online', lagMs })
+    })
+  })
+}
+
+/**
  * Checks PostgreSQL query response latency using Drizzle.
  */
-export async function checkDatabaseStatus(): Promise<{ status: 'online' | 'offline'; latency: number }> {
-  const start = Date.now()
+export async function checkDatabaseStatus(): Promise<{ status: 'online' | 'offline'; latency: number }> {  const start = Date.now()
   try {
     await db.execute(sql`SELECT 1`)
     const latency = Date.now() - start
