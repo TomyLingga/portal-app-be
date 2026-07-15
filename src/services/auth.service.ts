@@ -206,8 +206,45 @@ export async function getMeService(userId: string) {
   }
 }
 
+export async function changePasswordService(userId: string, currentPassword: string, passwordNew: string) {
+  const [user] = await db
+    .select()
+    .from(userTable)
+    .where(eq(userTable.id, userId))
+    .limit(1)
 
+  if (!user) {
+    throw new Error('User tidak ditemukan')
+  }
 
+  const valid = await verifyPassword(currentPassword, user.passwordHash)
+  if (!valid) {
+    throw new Error('Password saat ini tidak cocok')
+  }
+
+  const hash = await hashPassword(passwordNew)
+  await db
+    .update(userTable)
+    .set({
+      passwordHash: hash,
+      tokenVersion: user.tokenVersion + 1,
+      updatedAt: new Date()
+    })
+    .where(eq(userTable.id, userId))
+
+  // Log activity
+  try {
+    await db.insert(activityLog).values({
+      userId,
+      action: 'change_password',
+      details: 'Mengubah kata sandi',
+    })
+  } catch (err) {
+    // Ignore
+  }
+
+  return { message: 'Password berhasil diperbarui' }
+}
 
 
 

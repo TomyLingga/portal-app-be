@@ -53,13 +53,26 @@ export const importEmployeeSchema = z.object({
   isActive:             z.boolean().default(true),
 })
 
+const queryBooleanSchema = z.preprocess((value) => {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  return value
+}, z.boolean())
+
 export const listEmployeeQuerySchema = z.object({
   page:             z.coerce.number().int().min(1).default(1),
   limit:            z.coerce.number().int().min(1).max(1000).default(20),
   search:           z.string().optional(), // cari nama / nrk / nik
   unitOrganisasiId: z.string().uuid().optional(),
   gradeId:          z.string().uuid().optional(),
-  isActive:         z.coerce.boolean().optional(),
+  isActive:         queryBooleanSchema.optional(),
+  jenisKelamin:     z.enum(['L', 'P']).optional(),
+  penempatanAreaId: z.string().uuid().optional(),
+  statusKaryawanId: z.string().uuid().optional(),
+  statusPernikahanId: z.string().uuid().optional(),
+  hasUser:          queryBooleanSchema.optional(),
+  tanggalMasukFrom: z.string().date().optional(),
+  tanggalMasukTo:   z.string().date().optional(),
 })
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>

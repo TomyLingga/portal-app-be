@@ -1,5 +1,5 @@
 // ─── Service: Employee ────────────────────────────────────────────────────────
-import { eq, ilike, and, count, or, SQL } from 'drizzle-orm'
+import { eq, ilike, and, count, or, SQL, gte, lte, isNull, isNotNull } from 'drizzle-orm'
 import { db }            from '../db'
 import { employee, activityLog, user, unitOrganisasi } from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
@@ -35,10 +35,21 @@ export async function listEmployeesService(query: ListEmployeeQuery) {
   if (query.unitOrganisasiId) conditions.push(eq(employee.unitOrganisasiId, query.unitOrganisasiId))
   if (query.gradeId)          conditions.push(eq(employee.gradeId, query.gradeId))
   if (query.isActive !== undefined) conditions.push(eq(employee.isActive, query.isActive))
+  if (query.jenisKelamin) conditions.push(eq(employee.jenisKelamin, query.jenisKelamin))
+  if (query.penempatanAreaId) conditions.push(eq(employee.penempatanAreaId, query.penempatanAreaId))
+  if (query.statusKaryawanId) conditions.push(eq(employee.statusKaryawanId, query.statusKaryawanId))
+  if (query.statusPernikahanId) conditions.push(eq(employee.statusPernikahanId, query.statusPernikahanId))
+  if (query.tanggalMasukFrom) conditions.push(gte(employee.tanggalMasuk, query.tanggalMasukFrom))
+  if (query.tanggalMasukTo) conditions.push(lte(employee.tanggalMasuk, query.tanggalMasukTo))
+  if (query.hasUser !== undefined) conditions.push(query.hasUser ? isNotNull(user.id) : isNull(user.id))
 
   const where = conditions.length ? and(...conditions) : undefined
 
-  const [{ total }] = await db.select({ total: count() }).from(employee).where(where)
+  const [{ total }] = await db
+    .select({ total: count() })
+    .from(employee)
+    .leftJoin(user, eq(employee.id, user.employeeId))
+    .where(where)
 
   const rows = await db
     .select({

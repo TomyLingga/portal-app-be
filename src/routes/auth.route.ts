@@ -13,6 +13,7 @@ import {
   disableTotpService,
   forgotPasswordService,
   resetPasswordService,
+  changePasswordService,
 } from '../services/auth.service'
 import {
   generatePasskeyRegistrationOptionsService,
@@ -81,6 +82,18 @@ export default async function authRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     const data = await getMeService(request.user.sub)
     return reply.code(200).send(ok(data))
+  })
+
+  // PUT /api/auth/password
+  fastify.put('/password', {
+    preHandler: [fastify.authenticate],
+  }, async (request, reply) => {
+    const { currentPassword, newPassword } = request.body as { currentPassword?: string, newPassword?: string }
+    if (!currentPassword || !newPassword) {
+      return reply.code(400).send(err('currentPassword dan newPassword wajib diisi'))
+    }
+    const result = await changePasswordService(request.user.sub, currentPassword, newPassword)
+    return reply.code(200).send(ok(result))
   })
 
 
