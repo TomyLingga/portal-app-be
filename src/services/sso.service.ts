@@ -13,6 +13,7 @@ import {
   refPenempatanArea,
 } from '../db/schema'
 import { config }       from '../config/env'
+import { buildFileUrl } from '../utils/file'
 
 /**
  * Generate SSO token untuk user yang klik aplikasi SSO di portal.
@@ -111,6 +112,7 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
       employeeId:userTable.employeeId,
       employeeNama: employee.nama,
       employeeJabatan: employee.jabatan,
+      employeeFoto: employee.fotoProfil,
       gradeId: refGrade.id,
       gradeKode: refGrade.kode,
       gradeLabel: refGrade.label,
@@ -144,6 +146,7 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
       nama: userData.employeeNama,
       namaLengkap: userData.employeeNama,
       jabatan: userData.employeeJabatan,
+      fotoProfil: buildFileUrl(userData.employeeFoto),
       grade: userData.gradeId ? {
         id: userData.gradeId,
         kode: userData.gradeKode,
