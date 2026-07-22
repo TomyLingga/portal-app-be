@@ -6,7 +6,7 @@ import { db }                from '../db'
 import { refStatusKaryawan, refPendidikan, refStatusPernikahan, refGrade, refTipeUnit, refPenempatanArea, refKategoriAplikasi, refAgama, activityLog, aplikasi } from '../db/schema'
 import { ok }                from '../utils/response'
 import { eq, desc }          from 'drizzle-orm'
-import { getMasterStatsService, getPaginatedLogsService } from '../services/master.service'
+import { getMasterStatsService, getPaginatedLogsService, getUsersOptionsService } from '../services/master.service'
 import { checkDomainStatus, checkDatabaseStatus, checkStorageStatus, checkSSLCertificate, checkAppStatus, checkApiStatus } from '../services/health.service'
 
 /**
@@ -320,18 +320,33 @@ export default async function masterRoutes(fastify: FastifyInstance) {
       page?: string
       limit?: string
       search?: string
+      userId?: string
+      appId?: string
       startDate?: string
       endDate?: string
     }
     const page = query.page ? parseInt(query.page, 10) : 1
     const limit = query.limit ? parseInt(query.limit, 10) : 10
     const search = query.search
+    const userId = query.userId
+    const appId = query.appId
     const startDate = query.startDate
     const endDate = query.endDate
 
     try {
-      const result = await getPaginatedLogsService({ page, limit, search, startDate, endDate })
+      const result = await getPaginatedLogsService({ page, limit, search, userId, appId, startDate, endDate })
       return reply.send(ok(result))
+    } catch (error) {
+      fastify.log.error(error)
+      return reply.code(500).send({ success: false, error: 'Internal Server Error' })
+    }
+  })
+
+  // GET /api/master/users-options
+  fastify.get('/users-options', { preHandler: adminOnly }, async (_request, reply) => {
+    try {
+      const users = await getUsersOptionsService()
+      return reply.send(ok(users))
     } catch (error) {
       fastify.log.error(error)
       return reply.code(500).send({ success: false, error: 'Internal Server Error' })

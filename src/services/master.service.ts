@@ -1,6 +1,6 @@
 // ─── Service: Master (Master Data & Stats) ──────────────────────────────────────
 import { db } from '../db'
-import { user as userTable, aplikasi, activityLog } from '../db/schema'
+import { user as userTable, aplikasi, activityLog, employee } from '../db/schema'
 import { eq, and, gte, lte, desc, or, ilike, count } from 'drizzle-orm'
 
 export async function getMasterStatsService(currentYear: number, currentMonth: number) {
@@ -131,6 +131,8 @@ export async function getPaginatedLogsService(params: {
   page: number
   limit: number
   search?: string
+  userId?: string
+  appId?: string
   startDate?: string
   endDate?: string
 }) {
@@ -146,11 +148,19 @@ export async function getPaginatedLogsService(params: {
   if (params.endDate) {
     conditions.push(lte(activityLog.createdAt, new Date(params.endDate)))
   }
+  if (params.userId) {
+    conditions.push(eq(activityLog.userId, params.userId))
+  }
+  if (params.appId) {
+    conditions.push(eq(activityLog.appId, params.appId))
+  }
 
   if (params.search) {
     conditions.push(
       or(
         ilike(userTable.email, `%${params.search}%`),
+        ilike(employee.nama, `%${params.search}%`),
+        ilike(aplikasi.nama, `%${params.search}%`),
         ilike(activityLog.details, `%${params.search}%`),
         ilike(activityLog.action, `%${params.search}%`)
       )
@@ -162,18 +172,27 @@ export async function getPaginatedLogsService(params: {
   let query = db
     .select({
       id: activityLog.id,
+      userId: activityLog.userId,
       email: userTable.email,
+      userNama: employee.nama,
+      appId: activityLog.appId,
+      appName: aplikasi.nama,
+      appColor: aplikasi.warna,
       action: activityLog.action,
       details: activityLog.details,
       createdAt: activityLog.createdAt,
     })
     .from(activityLog)
     .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .leftJoin(aplikasi, eq(activityLog.appId, aplikasi.id))
 
   const countQuery = db
     .select({ total: count() })
     .from(activityLog)
     .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .leftJoin(aplikasi, eq(activityLog.appId, aplikasi.id))
 
   const finalQuery = whereClause ? query.where(whereClause) : query
   const finalCountQuery = whereClause ? countQuery.where(whereClause) : countQuery
@@ -194,4 +213,18 @@ export async function getPaginatedLogsService(params: {
       totalPages: Math.ceil(Number(total) / limit),
     }
   }
+}
+
+export async function getUsersOptionsService() {
+  const users = await db
+    .select({
+      id: userTable.id,
+      email: userTable.email,
+      nama: employee.nama,
+    })
+    .from(userTable)
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .orderBy(userTable.email)
+
+  return users
 }
