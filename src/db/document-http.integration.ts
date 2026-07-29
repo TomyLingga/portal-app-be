@@ -246,16 +246,21 @@ async function run() {
     assert(requestResponse.statusCode === 201, `Request download gagal: ${requestResponse.body}`)
     requestId = requestResponse.json().data.requestId
     assert(requestResponse.json().data.status === 'pending', 'Request manual harus berstatus pending')
-    const pendingResponse = await app.inject({ method: 'GET', url: '/api/documents/download-requests/pending?limit=20', headers: { authorization } })
-    assert(pendingResponse.statusCode === 200, `Antrean approver gagal: ${pendingResponse.body}`)
-    assert(pendingResponse.json().data.some((row: { id: string }) => row.id === requestId), 'Request tidak muncul pada antrean approver')
-    const capabilityResponse = await app.inject({ method: 'GET', url: '/api/documents/capabilities', headers: { authorization } })
-    assert(capabilityResponse.json().data.pendingApprovalCount >= 1, 'Badge pending approval tidak terhitung')
+    const employeePendingResponse = await app.inject({ method: 'GET', url: '/api/documents/download-requests/pending?limit=20', headers: { authorization } })
+    assert(employeePendingResponse.statusCode === 403, 'Karyawan non-admin tidak boleh membuka antrean persetujuan')
+    const employeeCapabilityResponse = await app.inject({ method: 'GET', url: '/api/documents/capabilities', headers: { authorization } })
+    assert(employeeCapabilityResponse.json().data.canApproveDownload === false, 'Karyawan non-admin tidak boleh menjadi approver')
+
+    const pendingResponse = await app.inject({ method: 'GET', url: '/api/documents/download-requests/pending?limit=20', headers: { authorization: adminAuthorization } })
+    assert(pendingResponse.statusCode === 200, `Antrean admin gagal: ${pendingResponse.body}`)
+    assert(pendingResponse.json().data.some((row: { id: string }) => row.id === requestId), 'Request tidak masuk ke antrean admin')
+    const capabilityResponse = await app.inject({ method: 'GET', url: '/api/documents/capabilities', headers: { authorization: adminAuthorization } })
+    assert(capabilityResponse.json().data.pendingApprovalCount >= 1, 'Badge pending approval admin tidak terhitung')
 
     const approvalResponse = await app.inject({
       method: 'POST',
       url: `/api/documents/download-requests/${requestId}/approve`,
-      headers: { authorization, 'content-type': 'application/json' },
+      headers: { authorization: adminAuthorization, 'content-type': 'application/json' },
       payload: {},
     })
     assert(approvalResponse.statusCode === 200, `Approval gagal: ${approvalResponse.body}`)

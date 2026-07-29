@@ -2,7 +2,6 @@ import { and, count, eq, inArray, or, sql } from 'drizzle-orm'
 import { db } from '../db'
 import {
   documentAccessRules,
-  documentApprovers,
   documentCategories,
   documents,
   employee,
@@ -99,58 +98,52 @@ export async function assertDocumentViewAccess(employeeId: string, documentId: s
   }
 }
 
+/**
+ * Menentukan approver berdasarkan hierarki organisasi (bukan tabel document_approvers).
+ *
+ * Approver yang sah:
+ * 1. Karyawan yang berada di unit pemilik dokumen (owner_unit_id) DAN merupakan atasan (punya bawahan)
+ * 2. Karyawan di unit ancestor (parent chain) dari unit pemilik dokumen, tipe sub_bagian ke atas
+ * 3. Rantai atasan langsung pemohon ke atas (atasanId chain — BOM-2 ke atas)
+ */
 export async function listMatchingApproverIds(documentId: string, requesterEmployeeId?: string | null) {
-  if (!requesterEmployeeId) {
-    const rows = await db.selectDistinct({ employeeId: documentApprovers.employeeId })
-      .from(documentApprovers)
-      .innerJoin(documents, eq(documents.id, documentId))
-      .where(or(
-        eq(documentApprovers.documentCategoryId, documents.categoryId),
-        eq(documentApprovers.unitOrganisasiId, documents.ownerUnitId),
-      ))
-    return rows.map(r => r.employeeId)
-  }
-
   const result = await db.execute<{ employee_id: string }>(sql`
-    WITH RECURSIVE requester_superiors AS (
-      SELECT e.atasan_id AS superior_id
-      FROM employee e
-      WHERE e.id = ${requesterEmployeeId}::uuid AND e.atasan_id IS NOT NULL
-      UNION ALL
-      SELECT parent_emp.atasan_id AS superior_id
-      FROM employee parent_emp
-      JOIN requester_superiors s ON s.superior_id = parent_emp.id
-      WHERE parent_emp.atasan_id IS NOT NULL
-    ), requester_unit_ancestors AS (
-      SELECT u.id, u.parent_id
-      FROM unit_organisasi u
-      JOIN employee e ON e.unit_organisasi_id = u.id
-      WHERE e.id = ${requesterEmployeeId}::uuid
-      UNION ALL
-      SELECT parent.id, parent.parent_id
-      FROM unit_organisasi parent
-      JOIN requester_unit_ancestors child ON child.parent_id = parent.id
-    ), doc_unit_ancestors AS (
-      SELECT u.id, u.parent_id
+    WITH RECURSIVE
+    -- Walk up the org tree from the document's owner unit
+    doc_unit_ancestors AS (
+      SELECT u.id, u.parent_id, u.tipe
       FROM unit_organisasi u
       JOIN documents d ON d.owner_unit_id = u.id
       WHERE d.id = ${documentId}::uuid
       UNION ALL
-      SELECT parent.id, parent.parent_id
+      SELECT parent.id, parent.parent_id, parent.tipe
       FROM unit_organisasi parent
       JOIN doc_unit_ancestors child ON child.parent_id = parent.id
     )
-    SELECT superior_id AS employee_id FROM requester_superiors
+    -- Employees in the owner unit + ancestor units (sub_bagian and above)
+    -- who are superiors (have at least 1 subordinate)
+    SELECT DISTINCT e.id AS employee_id
+    FROM employee e
+    WHERE e.is_active = true
+      AND e.unit_organisasi_id IN (SELECT id FROM doc_unit_ancestors)
+      AND EXISTS (SELECT 1 FROM employee sub WHERE sub.atasan_id = e.id)
+    ${requesterEmployeeId ? sql`
     UNION
-    SELECT da.employee_id
-    FROM document_approvers da
-    CROSS JOIN documents d
-    WHERE d.id = ${documentId}::uuid
-      AND (
-        da.document_category_id = d.category_id
-        OR da.unit_organisasi_id IN (SELECT id FROM requester_unit_ancestors)
-        OR da.unit_organisasi_id IN (SELECT id FROM doc_unit_ancestors)
+    -- Walk up the requester's superior chain (atasan → atasan → ...)
+    SELECT superior_id AS employee_id FROM (
+      WITH RECURSIVE requester_superiors AS (
+        SELECT e.atasan_id AS superior_id
+        FROM employee e
+        WHERE e.id = ${requesterEmployeeId}::uuid AND e.atasan_id IS NOT NULL
+        UNION ALL
+        SELECT parent_emp.atasan_id AS superior_id
+        FROM employee parent_emp
+        JOIN requester_superiors s ON s.superior_id = parent_emp.id
+        WHERE parent_emp.atasan_id IS NOT NULL
       )
+      SELECT superior_id FROM requester_superiors
+    ) superiors
+    ` : sql``}
   `)
 
   return result.map(r => r.employee_id)
@@ -182,4 +175,94 @@ export async function getDocumentAccessContext(documentId: string) {
     .limit(1)
   if (!row || !row.isActive) throw httpError(404, 'Dokumen tidak ditemukan')
   return row
+}
+
+/**
+ * Returns the approver hierarchy for display in the FE (read-only informational).
+ * Groups approvers by their source: unit hierarchy or superior chain.
+ */
+export async function listApproverHierarchyService() {
+  // Get all units that own at least 1 document, plus their ancestors
+  const rows = await db.execute<{
+    unit_id: string
+    unit_nama: string
+    unit_kode: string
+    unit_tipe: string
+    parent_id: string | null
+    employee_id: string
+    employee_nama: string
+    employee_nrk: string
+    employee_jabatan: string | null
+  }>(sql`
+    WITH RECURSIVE
+    owner_units AS (
+      SELECT DISTINCT d.owner_unit_id AS id
+      FROM documents d
+      WHERE d.is_active = true AND d.owner_unit_id IS NOT NULL
+    ),
+    all_ancestor_units AS (
+      SELECT u.id, u.nama, u.kode, u.tipe, u.parent_id
+      FROM unit_organisasi u
+      WHERE u.id IN (SELECT id FROM owner_units)
+      UNION
+      SELECT parent.id, parent.nama, parent.kode, parent.tipe, parent.parent_id
+      FROM unit_organisasi parent
+      JOIN all_ancestor_units child ON child.parent_id = parent.id
+    )
+    SELECT
+      u.id AS unit_id,
+      u.nama AS unit_nama,
+      u.kode AS unit_kode,
+      u.tipe AS unit_tipe,
+      u.parent_id,
+      e.id AS employee_id,
+      e.nama AS employee_nama,
+      e.nrk AS employee_nrk,
+      e.jabatan AS employee_jabatan
+    FROM all_ancestor_units u
+    JOIN employee e ON e.unit_organisasi_id = u.id AND e.is_active = true
+    WHERE EXISTS (SELECT 1 FROM employee sub WHERE sub.atasan_id = e.id)
+    ORDER BY
+      CASE u.tipe
+        WHEN 'direktorat' THEN 1
+        WHEN 'sevp' THEN 2
+        WHEN 'bagian' THEN 3
+        WHEN 'sub_bagian' THEN 4
+        WHEN 'seksi' THEN 5
+      END,
+      u.nama, e.nama
+  `)
+
+  // Group by unit
+  const unitMap = new Map<string, {
+    unitId: string
+    unitNama: string
+    unitKode: string
+    unitTipe: string
+    parentId: string | null
+    approvers: { employeeId: string; nama: string; nrk: string; jabatan: string | null }[]
+  }>()
+
+  for (const row of rows) {
+    let unit = unitMap.get(row.unit_id)
+    if (!unit) {
+      unit = {
+        unitId: row.unit_id,
+        unitNama: row.unit_nama,
+        unitKode: row.unit_kode,
+        unitTipe: row.unit_tipe,
+        parentId: row.parent_id,
+        approvers: [],
+      }
+      unitMap.set(row.unit_id, unit)
+    }
+    unit.approvers.push({
+      employeeId: row.employee_id,
+      nama: row.employee_nama,
+      nrk: row.employee_nrk,
+      jabatan: row.employee_jabatan,
+    })
+  }
+
+  return Array.from(unitMap.values())
 }

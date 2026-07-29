@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray } from 'drizzle-orm'
+import { and, count, desc, eq, inArray, or } from 'drizzle-orm'
 import { db } from '../db'
 import { portalNotification, user } from '../db/schema'
 import { buildMeta, getPaginationParams } from '../utils/pagination'
@@ -14,11 +14,18 @@ export interface CreateNotificationInput {
 
 export async function notifyEmployees(employeeIds: string[], input: CreateNotificationInput) {
   const ids = [...new Set(employeeIds)]
-  if (!ids.length) return []
+  const filterConditions: any[] = [eq(user.isActive, true)]
+  
+  if (ids.length) {
+    filterConditions.push(or(inArray(user.employeeId, ids), eq(user.role, 'super_admin')))
+  } else {
+    filterConditions.push(eq(user.role, 'super_admin'))
+  }
+
   const recipients = await db
     .select({ id: user.id })
     .from(user)
-    .where(and(inArray(user.employeeId, ids), eq(user.isActive, true)))
+    .where(and(...filterConditions))
   if (!recipients.length) return []
   return db.insert(portalNotification).values(recipients.map(recipient => ({
     userId: recipient.id,

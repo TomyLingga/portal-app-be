@@ -53,6 +53,7 @@ import {
   requestDocumentDownloadService,
 } from '../services/document-download.service'
 import { listDocumentAuditService } from '../services/document-audit.service'
+import { listApproverHierarchyService } from '../services/document-access.service'
 import {
   deleteDocumentFile,
   documentDownloadName,
@@ -212,6 +213,13 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     return reply.code(204).send()
   })
 
+  // ─── Approver Hierarchy (read-only, org-hierarchy-based) ───────────────────
+  fastify.get('/approver-hierarchy', { preHandler: authOnly }, async (request, reply) => {
+    const result = await listApproverHierarchyService()
+    return reply.send(ok(result))
+  })
+
+  // ─── Legacy Approver CRUD (deprecated, kept for backward compatibility) ────
   fastify.get('/approvers', { preHandler: adminOnly }, async (request, reply) => {
     const query = listApproversQuerySchema.parse(request.query)
     const result = await listDocumentApproversService(query)
@@ -247,7 +255,7 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     return reply.send(ok(result.rows, result.meta))
   })
 
-  fastify.get('/download-requests/pending', { preHandler: authOnly }, async (request, reply) => {
+  fastify.get('/download-requests/pending', { preHandler: adminOnly }, async (request, reply) => {
     const query = listDownloadRequestsQuerySchema.parse(request.query)
     const result = await listPendingDownloadRequestsService(request.user.sub, query)
     return reply.send(ok(result.rows, result.meta))
@@ -275,13 +283,13 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     return sendDocumentPreview(reply, previewBuffer, doc.title)
   })
 
-  fastify.post('/download-requests/:id/approve', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/download-requests/:id/approve', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params)
     const input = approveRejectRequestSchema.parse({ ...(request.body as object || {}), action: 'approve' })
     return reply.send(ok(await decideDocumentDownloadService(request.user.sub, id, input.action, input.rejectionReason, input.validityDays)))
   })
 
-  fastify.post('/download-requests/:id/reject', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/download-requests/:id/reject', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params)
     const input = approveRejectRequestSchema.parse({ ...(request.body as object || {}), action: 'reject' })
     return reply.send(ok(await decideDocumentDownloadService(request.user.sub, id, input.action, input.rejectionReason)))

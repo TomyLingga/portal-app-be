@@ -114,8 +114,19 @@ export async function updateAplikasiIconService(id: string, filename: string, us
 }
 
 export async function logAppAccessService(userId: string, appId: string) {
-  const [app] = await db.select({ nama: aplikasi.nama }).from(aplikasi).where(eq(aplikasi.id, appId)).limit(1)
-  if (!app) throw new Error('Aplikasi tidak ditemukan')
+  const [app] = await db
+    .select({
+      nama: aplikasi.nama,
+      authMode: aplikasi.authMode,
+      isActive: aplikasi.isActive,
+    })
+    .from(aplikasi)
+    .where(eq(aplikasi.id, appId))
+    .limit(1)
+  if (!app || !app.isActive) throw new Error('Aplikasi tidak ditemukan atau tidak aktif')
+  if (app.authMode !== 'independent') {
+    throw new Error('Aplikasi SSO harus dibuka melalui proses login SSO Portal.')
+  }
 
   await db.insert(activityLog).values({
     userId,

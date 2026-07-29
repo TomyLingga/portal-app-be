@@ -117,6 +117,7 @@ export const listDownloadRequestsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(1000).default(50),
   status: z.enum(['pending', 'approved', 'rejected', 'expired']).optional(),
+  documentId: z.string().uuid().optional(),
 })
 
 export const listDocumentAuditQuerySchema = z.object({
