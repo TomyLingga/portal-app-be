@@ -41,7 +41,6 @@ export interface DocumentTreeDocument {
   description: string | null
   fileSize: number
   mimeType: string
-  confidentialityLevel: number
   ownerUnitId: string | null
   ownerUnitName: string | null
   uploadedBy: string
@@ -75,22 +74,17 @@ export async function listDocumentCategoriesService() {
       id: documentCategories.id,
       name: documentCategories.name,
       code: documentCategories.code,
-      defaultConfidentialityLevel: documentCategories.defaultConfidentialityLevel,
-      autoApproveGradeLevel: documentCategories.autoApproveGradeLevel,
-      autoApproveGradeCode: refGrade.kode,
       createdAt: documentCategories.createdAt,
       updatedAt: documentCategories.updatedAt,
     })
     .from(documentCategories)
-    .leftJoin(refGrade, eq(documentCategories.autoApproveGradeLevel, refGrade.level))
     .orderBy(documentCategories.name)
 }
 
 export async function createDocumentCategoryService(input: CreateDocumentCategoryInput) {
   const [created] = await db.insert(documentCategories).values({
-    ...input,
+    name: input.name,
     code: input.code.toUpperCase(),
-    autoApproveGradeLevel: input.autoApproveGradeLevel ?? null,
   }).returning()
   return created
 }
@@ -185,7 +179,6 @@ export async function listDocumentsService(userId: string, query: ListDocumentsQ
     description: documents.description,
     fileSize: documents.fileSize,
     mimeType: documents.mimeType,
-    confidentialityLevel: sql<number>`coalesce(${documents.confidentialityLevel}, ${documentCategories.defaultConfidentialityLevel})`,
     ownerUnitId: documents.ownerUnitId,
     ownerUnitName: unitOrganisasi.nama,
     uploadedBy: documents.uploadedBy,
@@ -228,7 +221,6 @@ export async function getDocumentTreeService(userId: string, query: DocumentTree
     description: documents.description,
     fileSize: documents.fileSize,
     mimeType: documents.mimeType,
-    confidentialityLevel: sql<number>`coalesce(${documents.confidentialityLevel}, ${documentCategories.defaultConfidentialityLevel})`,
     ownerUnitId: documents.ownerUnitId,
     ownerUnitName: unitOrganisasi.nama,
     uploadedBy: documents.uploadedBy,
@@ -332,8 +324,6 @@ export async function getDocumentByIdService(userId: string, id: string, auditMe
     fileSize: documents.fileSize,
     mimeType: documents.mimeType,
     filePath: documents.filePath,
-    confidentialityLevel: sql<number>`coalesce(${documents.confidentialityLevel}, ${documentCategories.defaultConfidentialityLevel})`,
-    confidentialityOverride: documents.confidentialityLevel,
     ownerUnitId: documents.ownerUnitId,
     ownerUnitName: unitOrganisasi.nama,
     uploadedBy: documents.uploadedBy,
@@ -366,7 +356,22 @@ export async function getDocumentByIdService(userId: string, id: string, auditMe
       metadata: auditMetadata,
     })
   }
-  return { ...document, access: { canView: canManage || canView, canEdit: canManage || canEdit, canManage, canApproveRule } }
+
+  const targetRules = await db.select({
+    unitId: documentAccessRules.unitOrganisasiId,
+    unitName: unitOrganisasi.nama,
+    unitKode: unitOrganisasi.kode,
+    includeDescendants: documentAccessRules.includeDescendants,
+  }).from(documentAccessRules)
+    .leftJoin(unitOrganisasi, eq(documentAccessRules.unitOrganisasiId, unitOrganisasi.id))
+    .where(and(eq(documentAccessRules.documentId, id), eq(documentAccessRules.accessType, 'view')))
+
+  const targetUnits = targetRules
+    .filter(r => r.unitId)
+    .map(r => ({ unitId: r.unitId!, unitName: r.unitName || '', unitKode: r.unitKode || '' }))
+  const includeDescendants = targetRules.length > 0 ? (targetRules[0].includeDescendants ?? true) : true
+
+  return { ...document, targetUnits, includeDescendants, access: { canView: canManage || canView, canEdit: canManage || canEdit, canManage, canApproveRule } }
 }
 
 export async function createDocumentService(userId: string, input: CreateDocumentInput & { filePath: string }) {
@@ -379,10 +384,21 @@ export async function createDocumentService(userId: string, input: CreateDocumen
       filePath: input.filePath,
       fileSize: input.fileSize,
       mimeType: input.mimeType,
-      confidentialityLevel: input.confidentialityLevel ?? null,
       ownerUnitId: input.ownerUnitId ?? null,
       uploadedBy: actor.employeeId!,
     }).returning()
+
+    if (input.targetUnitIds && input.targetUnitIds.length > 0) {
+      for (const unitId of input.targetUnitIds) {
+        await tx.insert(documentAccessRules).values({
+          documentId: rows[0].id,
+          unitOrganisasiId: unitId,
+          includeDescendants: input.includeDescendants ?? true,
+          accessType: 'view',
+        })
+      }
+    }
+
     await tx.insert(documentVersions).values({
       documentId: rows[0].id,
       version: 1,
@@ -396,7 +412,7 @@ export async function createDocumentService(userId: string, input: CreateDocumen
       documentId: rows[0].id,
       employeeId: actor.employeeId!,
       action: 'uploaded',
-      metadata: { version: rows[0].version, mimeType: rows[0].mimeType, fileSize: rows[0].fileSize },
+      metadata: { version: rows[0].version, mimeType: rows[0].mimeType, fileSize: rows[0].fileSize, targetUnitCount: input.targetUnitIds?.length || 0 },
     }, tx)
     return rows
   })
@@ -407,15 +423,33 @@ export async function updateDocumentService(userId: string, id: string, input: U
   const actor = await getDocumentActorContext(userId)
   const canEdit = actor.role === 'super_admin' || await checkDocumentRuleAccess(actor.employeeId!, id, 'edit')
   if (!canEdit) throw httpError(403, 'Anda tidak memiliki hak mengubah dokumen ini')
-  const changes: Partial<typeof documents.$inferInsert> = { ...input, updatedAt: new Date() }
+  const { targetUnitIds, includeDescendants, ...docFields } = input
+  const changes: Partial<typeof documents.$inferInsert> = { ...docFields, updatedAt: new Date() }
   if ('description' in input) changes.description = input.description ?? null
   if ('ownerUnitId' in input) changes.ownerUnitId = input.ownerUnitId ?? null
-  if ('confidentialityLevel' in input) changes.confidentialityLevel = input.confidentialityLevel ?? null
 
   const [updated] = await db.transaction(async tx => {
     const rows = await tx.update(documents).set(changes)
       .where(and(eq(documents.id, id), eq(documents.isActive, true))).returning()
     if (!rows[0]) throw httpError(404, 'Dokumen tidak ditemukan')
+
+    if (targetUnitIds !== undefined) {
+      await tx.delete(documentAccessRules).where(and(
+        eq(documentAccessRules.documentId, id),
+        eq(documentAccessRules.accessType, 'view'),
+      ))
+      if (targetUnitIds.length > 0) {
+        for (const unitId of targetUnitIds) {
+          await tx.insert(documentAccessRules).values({
+            documentId: id,
+            unitOrganisasiId: unitId,
+            includeDescendants: includeDescendants ?? true,
+            accessType: 'view',
+          })
+        }
+      }
+    }
+
     await logDocumentAction({ documentId: id, employeeId: actor.employeeId!, action: 'edited', metadata: { fields: Object.keys(input) } }, tx)
     return rows
   })

@@ -47,7 +47,7 @@ async function expireApprovedRequest(id: string) {
 export async function getDocumentDownloadStatusService(userId: string, documentId: string) {
   const actor = await getDocumentActorContext(userId)
   const canView = actor.role === 'super_admin' || (actor.employeeId ? await checkDocumentViewAccess(actor.employeeId, documentId) : false)
-  if (!canView) return { canView: false, autoApproveEligible: false, request: null }
+  if (!canView) return { canView: false, request: null }
   const context = await getDocumentAccessContext(documentId)
   const [latest] = await db.select().from(documentDownloadRequests)
     .where(and(
@@ -56,23 +56,26 @@ export async function getDocumentDownloadStatusService(userId: string, documentI
     ))
     .orderBy(desc(documentDownloadRequests.createdAt)).limit(1)
 
-  if (latest?.status === 'approved' && !latest.downloadedAt && latest.tokenExpiresAt && latest.tokenExpiresAt <= new Date()) {
+  const now = new Date()
+  const isApproved = latest?.status === 'approved'
+  const isExpired = isApproved && latest?.tokenExpiresAt && new Date(latest.tokenExpiresAt) <= now
+
+  if (isExpired && latest) {
     await expireApprovedRequest(latest.id)
     latest.status = 'expired'
     latest.downloadToken = null
   }
 
+  const isTokenActive = isApproved && !isExpired && Boolean(latest?.downloadToken)
+
   return {
     canView: true,
-    autoApproveEligible: context.autoApproveGradeLevel !== null
-      && actor.gradeLevel !== null
-      && actor.gradeLevel >= context.autoApproveGradeLevel,
     request: latest ? {
       id: latest.id,
       status: latest.status,
       reason: latest.reason,
       rejectionReason: latest.rejectionReason,
-      downloadToken: latest.status === 'approved' && !latest.downloadedAt ? latest.downloadToken : null,
+      downloadToken: isTokenActive ? latest.downloadToken : null,
       tokenExpiresAt: latest.tokenExpiresAt,
       downloadedAt: latest.downloadedAt,
       createdAt: latest.createdAt,
@@ -96,11 +99,7 @@ export async function requestDocumentDownloadService(userId: string, documentId:
   )).limit(1)
   if (pending) return { requestId: pending.id, status: pending.status, downloadToken: null, tokenExpiresAt: null }
 
-  const autoApproved = actor.role === 'super_admin' || (
-    context.autoApproveGradeLevel !== null
-    && actor.gradeLevel !== null
-    && actor.gradeLevel >= context.autoApproveGradeLevel
-  )
+  const autoApproved = actor.role === 'super_admin'
   const approverIds = autoApproved ? [] : await listMatchingApproverIds(documentId)
   if (!autoApproved && !approverIds.length) {
     throw httpError(409, 'Approver download belum dikonfigurasi untuk kategori atau unit pemilik dokumen ini')
@@ -268,74 +267,236 @@ export async function listMyDownloadRequestsService(userId: string, query: ListD
     .where(whereCondition)
     .orderBy(desc(documentDownloadRequests.createdAt)).limit(limit).offset(offset)
 
-  return { rows, meta: buildMeta(page, limit, total) }
+  const now = new Date()
+  const processedRows = rows.map(r => {
+    const isExpired = r.status === 'approved' && r.tokenExpiresAt && new Date(r.tokenExpiresAt) <= now
+    return {
+      ...r,
+      status: isExpired ? 'expired' : r.status,
+      downloadToken: isExpired ? null : r.downloadToken,
+    }
+  })
+
+  return { rows: processedRows, meta: buildMeta(page, limit, total) }
 }
 
 export async function listPendingDownloadRequestsService(userId: string, query: ListDownloadRequestsQuery) {
   const actor = await getDocumentActorContext(userId)
   const { page, limit, offset } = getPaginationParams(query)
   const requester = alias(employee, 'pending_requester_employee')
+  const reqStatus = query.status || 'pending'
 
-  const isSuperior = await db.select({ total: count() }).from(employee).where(eq(employee.atasanId, actor.employeeId!))
-  const isSuperiorFlag = Number(isSuperior[0]?.total || 0) > 0
+  if (actor.role === 'super_admin') {
+    const baseConditions = [eq(documentDownloadRequests.status, reqStatus)]
+    const whereCondition = and(...baseConditions)
 
-  const assignments = await db.select({ documentCategoryId: documentApprovers.documentCategoryId, unitId: documentApprovers.unitOrganisasiId })
-    .from(documentApprovers).where(eq(documentApprovers.employeeId, actor.employeeId!))
+    const rows = await db.selectDistinct({
+      id: documentDownloadRequests.id,
+      documentId: documentDownloadRequests.documentId,
+      documentTitle: documents.title,
+      categoryName: documentCategories.name,
+      ownerUnitName: unitOrganisasi.nama,
+      requestedBy: documentDownloadRequests.requestedBy,
+      requesterName: requester.nama,
+      requesterNrk: requester.nrk,
+      status: documentDownloadRequests.status,
+      reason: documentDownloadRequests.reason,
+      createdAt: documentDownloadRequests.createdAt,
+    }).from(documentDownloadRequests)
+      .innerJoin(documents, eq(documentDownloadRequests.documentId, documents.id))
+      .innerJoin(documentCategories, eq(documents.categoryId, documentCategories.id))
+      .innerJoin(requester, eq(documentDownloadRequests.requestedBy, requester.id))
+      .leftJoin(unitOrganisasi, eq(documents.ownerUnitId, unitOrganisasi.id))
+      .where(whereCondition)
+      .orderBy(desc(documentDownloadRequests.createdAt)).limit(limit).offset(offset)
 
-  const pendingConditions: any[] = []
-  if (isSuperiorFlag) {
-    pendingConditions.push(eq(requester.atasanId, actor.employeeId!))
+    const [totalRow] = await db.select({ total: sql<number>`count(distinct ${documentDownloadRequests.id})` })
+      .from(documentDownloadRequests)
+      .innerJoin(documents, eq(documentDownloadRequests.documentId, documents.id))
+      .innerJoin(documentCategories, eq(documents.categoryId, documentCategories.id))
+      .innerJoin(requester, eq(documentDownloadRequests.requestedBy, requester.id))
+      .leftJoin(unitOrganisasi, eq(documents.ownerUnitId, unitOrganisasi.id))
+      .where(whereCondition)
+
+    return { rows, meta: buildMeta(page, limit, Number(totalRow?.total || 0)) }
   }
-  if (assignments.length) {
-    pendingConditions.push(or(...assignments.map(assignment => or(
-      assignment.documentCategoryId ? eq(documents.categoryId, assignment.documentCategoryId) : undefined,
-      assignment.unitId ? eq(documents.ownerUnitId, assignment.unitId) : undefined,
-    )).filter(Boolean) as any))
-  }
 
-  if (!pendingConditions.length && actor.role !== 'super_admin') {
-    return { rows: [], meta: buildMeta(page, limit, 0) }
-  }
+  const rows = await db.execute<any>(sql`
+    WITH RECURSIVE requester_superiors AS (
+      SELECT e.id AS req_id, e.atasan_id AS superior_id
+      FROM employee e
+      WHERE e.atasan_id IS NOT NULL
+      UNION ALL
+      SELECT s.req_id, parent_emp.atasan_id AS superior_id
+      FROM employee parent_emp
+      JOIN requester_superiors s ON s.superior_id = parent_emp.id
+      WHERE parent_emp.atasan_id IS NOT NULL
+    ), requester_unit_ancestors AS (
+      SELECT e.id AS req_id, u.id AS unit_id, u.parent_id
+      FROM unit_organisasi u
+      JOIN employee e ON e.unit_organisasi_id = u.id
+      UNION ALL
+      SELECT s.req_id, parent.id AS unit_id, parent.parent_id
+      FROM unit_organisasi parent
+      JOIN requester_unit_ancestors s ON s.parent_id = parent.id
+    ), doc_unit_ancestors AS (
+      SELECT d.id AS doc_id, u.id AS unit_id, u.parent_id
+      FROM unit_organisasi u
+      JOIN documents d ON d.owner_unit_id = u.id
+      UNION ALL
+      SELECT s.doc_id, parent.id AS unit_id, parent.parent_id
+      FROM unit_organisasi parent
+      JOIN doc_unit_ancestors s ON s.parent_id = parent.id
+    )
+    SELECT DISTINCT
+      r.id,
+      r.document_id AS "documentId",
+      d.title AS "documentTitle",
+      c.name AS "categoryName",
+      u.nama AS "ownerUnitName",
+      r.requested_by AS "requestedBy",
+      req.nama AS "requesterName",
+      req.nrk AS "requesterNrk",
+      r.status,
+      r.reason,
+      r.created_at AS "createdAt"
+    FROM document_download_requests r
+    JOIN documents d ON d.id = r.document_id
+    JOIN document_categories c ON c.id = d.category_id
+    JOIN employee req ON req.id = r.requested_by
+    LEFT JOIN unit_organisasi u ON u.id = d.owner_unit_id
+    WHERE r.status = ${reqStatus}::document_download_status
+      AND (
+        EXISTS (SELECT 1 FROM requester_superiors WHERE req_id = req.id AND superior_id = ${actor.employeeId}::uuid)
+        OR EXISTS (
+          SELECT 1 FROM document_approvers da
+          WHERE da.employee_id = ${actor.employeeId}::uuid
+            AND (
+              da.document_category_id = d.category_id
+              OR da.unit_organisasi_id IN (SELECT unit_id FROM requester_unit_ancestors WHERE req_id = req.id)
+              OR da.unit_organisasi_id IN (SELECT unit_id FROM doc_unit_ancestors WHERE doc_id = d.id)
+            )
+        )
+      )
+    ORDER BY r.created_at DESC
+    LIMIT ${limit} OFFSET ${offset}
+  `)
 
-  const baseConditions: any[] = []
-  if (query.status) {
-    baseConditions.push(eq(documentDownloadRequests.status, query.status))
-  }
-  if (actor.role !== 'super_admin') {
-    baseConditions.push(or(...pendingConditions))
-  }
+  const countResult = await db.execute<{ total: number }>(sql`
+    WITH RECURSIVE requester_superiors AS (
+      SELECT e.id AS req_id, e.atasan_id AS superior_id
+      FROM employee e
+      WHERE e.atasan_id IS NOT NULL
+      UNION ALL
+      SELECT s.req_id, parent_emp.atasan_id AS superior_id
+      FROM employee parent_emp
+      JOIN requester_superiors s ON s.superior_id = parent_emp.id
+      WHERE parent_emp.atasan_id IS NOT NULL
+    ), requester_unit_ancestors AS (
+      SELECT e.id AS req_id, u.id AS unit_id, u.parent_id
+      FROM unit_organisasi u
+      JOIN employee e ON e.unit_organisasi_id = u.id
+      UNION ALL
+      SELECT s.req_id, parent.id AS unit_id, parent.parent_id
+      FROM unit_organisasi parent
+      JOIN requester_unit_ancestors s ON s.parent_id = parent.id
+    ), doc_unit_ancestors AS (
+      SELECT d.id AS doc_id, u.id AS unit_id, u.parent_id
+      FROM unit_organisasi u
+      JOIN documents d ON d.owner_unit_id = u.id
+      UNION ALL
+      SELECT s.doc_id, parent.id AS unit_id, parent.parent_id
+      FROM unit_organisasi parent
+      JOIN doc_unit_ancestors s ON s.parent_id = parent.id
+    )
+    SELECT COUNT(DISTINCT r.id)::int AS total
+    FROM document_download_requests r
+    JOIN documents d ON d.id = r.document_id
+    JOIN employee req ON req.id = r.requested_by
+    WHERE r.status = ${reqStatus}::document_download_status
+      AND (
+        EXISTS (SELECT 1 FROM requester_superiors WHERE req_id = req.id AND superior_id = ${actor.employeeId}::uuid)
+        OR EXISTS (
+          SELECT 1 FROM document_approvers da
+          WHERE da.employee_id = ${actor.employeeId}::uuid
+            AND (
+              da.document_category_id = d.category_id
+              OR da.unit_organisasi_id IN (SELECT unit_id FROM requester_unit_ancestors WHERE req_id = req.id)
+              OR da.unit_organisasi_id IN (SELECT unit_id FROM doc_unit_ancestors WHERE doc_id = d.id)
+            )
+        )
+      )
+  `)
 
-  const whereCondition = and(...baseConditions)
-
-  const rows = await db.selectDistinct({
-    id: documentDownloadRequests.id,
-    documentId: documentDownloadRequests.documentId,
-    documentTitle: documents.title,
-    categoryName: documentCategories.name,
-    ownerUnitName: unitOrganisasi.nama,
-    requestedBy: documentDownloadRequests.requestedBy,
-    requesterName: requester.nama,
-    requesterNrk: requester.nrk,
-    status: documentDownloadRequests.status,
-    reason: documentDownloadRequests.reason,
-    createdAt: documentDownloadRequests.createdAt,
-  }).from(documentDownloadRequests)
-    .innerJoin(documents, eq(documentDownloadRequests.documentId, documents.id))
-    .innerJoin(documentCategories, eq(documents.categoryId, documentCategories.id))
-    .innerJoin(requester, eq(documentDownloadRequests.requestedBy, requester.id))
-    .leftJoin(unitOrganisasi, eq(documents.ownerUnitId, unitOrganisasi.id))
-    .where(whereCondition)
-    .orderBy(desc(documentDownloadRequests.createdAt)).limit(limit).offset(offset)
-
-  const [totalRow] = await db.select({ total: count() }).from(documentDownloadRequests).where(whereCondition)
-  return { rows, meta: buildMeta(page, limit, Number(totalRow?.total || 0)) }
+  const total = Number(countResult[0]?.total || 0)
+  return { rows: Array.from(rows), meta: buildMeta(page, limit, total) }
 }
 
 export async function getDocumentCapabilitiesService(userId: string) {
   const actor = await getDocumentActorContext(userId, false)
+  const isSuperAdmin = actor.role === 'super_admin'
+
   if (!actor.employeeId) {
-    return { canManage: actor.role === 'super_admin', canApproveDownload: false, canViewAudit: actor.role === 'super_admin', pendingApprovalCount: 0 }
+    let pendingApprovalCount = 0
+    if (isSuperAdmin) {
+      const [countRow] = await db.select({ total: count() }).from(documentDownloadRequests).where(eq(documentDownloadRequests.status, 'pending'))
+      pendingApprovalCount = Number(countRow?.total || 0)
+    }
+    return { canManage: isSuperAdmin, canApproveDownload: isSuperAdmin, canViewAudit: isSuperAdmin, pendingApprovalCount }
   }
+
+  if (isSuperAdmin) {
+    const [countRow] = await db.select({ total: count() }).from(documentDownloadRequests).where(eq(documentDownloadRequests.status, 'pending'))
+    return { canManage: true, canApproveDownload: true, canViewAudit: true, pendingApprovalCount: Number(countRow?.total || 0) }
+  }
+
+  const countResult = await db.execute<{ total: number }>(sql`
+    WITH RECURSIVE requester_superiors AS (
+      SELECT e.id AS req_id, e.atasan_id AS superior_id
+      FROM employee e
+      WHERE e.atasan_id IS NOT NULL
+      UNION ALL
+      SELECT s.req_id, parent_emp.atasan_id AS superior_id
+      FROM employee parent_emp
+      JOIN requester_superiors s ON s.superior_id = parent_emp.id
+      WHERE parent_emp.atasan_id IS NOT NULL
+    ), requester_unit_ancestors AS (
+      SELECT e.id AS req_id, u.id AS unit_id, u.parent_id
+      FROM unit_organisasi u
+      JOIN employee e ON e.unit_organisasi_id = u.id
+      UNION ALL
+      SELECT s.req_id, parent.id AS unit_id, parent.parent_id
+      FROM unit_organisasi parent
+      JOIN requester_unit_ancestors s ON s.parent_id = parent.id
+    ), doc_unit_ancestors AS (
+      SELECT d.id AS doc_id, u.id AS unit_id, u.parent_id
+      FROM unit_organisasi u
+      JOIN documents d ON d.owner_unit_id = u.id
+      UNION ALL
+      SELECT s.doc_id, parent.id AS unit_id, parent.parent_id
+      FROM unit_organisasi parent
+      JOIN doc_unit_ancestors s ON s.parent_id = parent.id
+    )
+    SELECT COUNT(DISTINCT r.id)::int AS total
+    FROM document_download_requests r
+    JOIN documents d ON d.id = r.document_id
+    JOIN employee req ON req.id = r.requested_by
+    WHERE r.status = 'pending'
+      AND (
+        EXISTS (SELECT 1 FROM requester_superiors WHERE req_id = req.id AND superior_id = ${actor.employeeId}::uuid)
+        OR EXISTS (
+          SELECT 1 FROM document_approvers da
+          WHERE da.employee_id = ${actor.employeeId}::uuid
+            AND (
+              da.document_category_id = d.category_id
+              OR da.unit_organisasi_id IN (SELECT unit_id FROM requester_unit_ancestors WHERE req_id = req.id)
+              OR da.unit_organisasi_id IN (SELECT unit_id FROM doc_unit_ancestors WHERE doc_id = d.id)
+            )
+        )
+      )
+  `)
+
+  const pendingApprovalCount = Number(countResult[0]?.total || 0)
 
   const [subordinateCountRow] = await db
     .select({ total: count() })
@@ -343,40 +504,15 @@ export async function getDocumentCapabilitiesService(userId: string) {
     .where(eq(employee.atasanId, actor.employeeId))
   const isSuperior = Number(subordinateCountRow?.total || 0) > 0
 
-  const assignmentRows = await db.select({ documentCategoryId: documentApprovers.documentCategoryId, unitId: documentApprovers.unitOrganisasiId })
-    .from(documentApprovers).where(eq(documentApprovers.employeeId, actor.employeeId))
+  const assignmentRows = await db.select({ id: documentApprovers.id })
+    .from(documentApprovers).where(eq(documentApprovers.employeeId, actor.employeeId)).limit(1)
 
-  const canApproveDownload = isSuperior || assignmentRows.length > 0
-  let pendingApprovalCount = 0
-
-  if (canApproveDownload) {
-    const requester = alias(employee, 'capability_pending_requester')
-    const pendingConditions: any[] = []
-    if (isSuperior) {
-      pendingConditions.push(eq(requester.atasanId, actor.employeeId))
-    }
-    if (assignmentRows.length) {
-      pendingConditions.push(or(...assignmentRows.map(assignment => or(
-        assignment.documentCategoryId ? eq(documents.categoryId, assignment.documentCategoryId) : undefined,
-        assignment.unitId ? eq(documents.ownerUnitId, assignment.unitId) : undefined,
-      )).filter(Boolean) as any))
-    }
-
-    const pendingRows = await db.selectDistinct({ id: documentDownloadRequests.id })
-      .from(documentDownloadRequests)
-      .innerJoin(documents, eq(documentDownloadRequests.documentId, documents.id))
-      .innerJoin(requester, eq(documentDownloadRequests.requestedBy, requester.id))
-      .where(and(
-        eq(documentDownloadRequests.status, 'pending'),
-        or(...pendingConditions),
-      ))
-    pendingApprovalCount = pendingRows.length
-  }
+  const canApproveDownload = isSuperior || assignmentRows.length > 0 || pendingApprovalCount > 0
 
   return {
-    canManage: actor.role === 'super_admin',
+    canManage: false,
     canApproveDownload,
-    canViewAudit: actor.role === 'super_admin',
+    canViewAudit: false,
     pendingApprovalCount,
   }
 }

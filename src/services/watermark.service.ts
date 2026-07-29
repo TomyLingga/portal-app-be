@@ -190,59 +190,165 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
     }
 
     // -----------------------------------------------------------------
-    // MODE 1: DOWNLOADED APPROVED DOCUMENT (CLEAN BODY + 1 DEDICATED VERIFICATION PAGE)
+    // 1. APPLY DIAGONAL INL LOGO WATERMARK TO ALL DOCUMENT BODY PAGES
+    // -----------------------------------------------------------------
+    pages.forEach(page => {
+      const { width, height } = page.getSize()
+
+      // Center Diagonal INL Logo Watermark (Subtle opacity, rotated 30 deg - perfectly centered)
+      if (logoImage) {
+        const logoWidth = Math.min(width, height) * 0.68
+        const logoScale = logoWidth / logoImage.width
+        const logoHeight = logoImage.height * logoScale
+
+        const angleDeg = 30
+        const rad = (angleDeg * Math.PI) / 180
+        const halfW = logoWidth / 2
+        const halfH = logoHeight / 2
+
+        // Offset coordinates so that the rotated image center coincides exactly with (width / 2, height / 2)
+        const dx = halfW * Math.cos(rad) - halfH * Math.sin(rad)
+        const dy = halfW * Math.sin(rad) + halfH * Math.cos(rad)
+
+        const logoX = width / 2 - dx
+        const logoY = height / 2 - dy
+
+        page.drawImage(logoImage, {
+          x: logoX,
+          y: logoY,
+          width: logoWidth,
+          height: logoHeight,
+          opacity: 0.12,
+          rotate: degrees(angleDeg),
+        })
+      } else {
+        const diagonalText = `PT INDUSTRI NABATI LESTARI`
+        const fontSizeCenter = Math.min(width, height) / 15
+        const textWidthCenter = font.widthOfTextAtSize(diagonalText, fontSizeCenter)
+
+        const angleDeg = 30
+        const rad = (angleDeg * Math.PI) / 180
+        const halfW = textWidthCenter / 2
+        const halfH = fontSizeCenter / 3
+
+        const dx = halfW * Math.cos(rad) - halfH * Math.sin(rad)
+        const dy = halfW * Math.sin(rad) + halfH * Math.cos(rad)
+
+        page.drawText(diagonalText, {
+          x: width / 2 - dx,
+          y: height / 2 - dy,
+          size: fontSizeCenter,
+          font,
+          color: rgb(0.7, 0.35, 0.0),
+          opacity: 0.09,
+          rotate: degrees(angleDeg),
+        })
+      }
+
+      // Bottom-Right Corner QR Stamp (ONLY in Preview Mode, omitted in Download Mode)
+      if (!metadata.isDownload) {
+        const qrSize = 54
+        const stampText = 'Ditandatangani secara elektronik'
+        const fontSize = 6.5
+        const textWidth = fontRegular.widthOfTextAtSize(stampText, fontSize)
+
+        const boxWidth = Math.max(qrSize + 16, textWidth + 14)
+        const boxHeight = qrSize + 18
+
+        const boxMarginRight = 16
+        const boxMarginBottom = 14
+        const boxX = Math.max(10, width - boxWidth - boxMarginRight)
+        const boxY = boxMarginBottom
+
+        const qrX = boxX + (boxWidth - qrSize) / 2
+        const qrY = boxY + 13
+
+        if (qrImage) {
+          page.drawImage(qrImage, {
+            x: qrX,
+            y: qrY,
+            width: qrSize,
+            height: qrSize,
+          })
+        }
+
+        const textX = boxX + (boxWidth - textWidth) / 2
+        const textY = boxY + 4.5
+
+        page.drawText(stampText, {
+          x: textX,
+          y: textY,
+          size: fontSize,
+          font: fontRegular,
+          color: rgb(0.45, 0.48, 0.52),
+        })
+      }
+    })
+
+    // -----------------------------------------------------------------
+    // 2. DEDICATED VERIFICATION PAGE FOR DOWNLOADED APPROVED DOCUMENT
     // -----------------------------------------------------------------
     if (metadata.isDownload) {
       const vPage = pdfDoc.addPage([595.28, 841.89]) // A4 Page
       const { width: pWidth, height: pHeight } = vPage.getSize()
 
-      // Top Amber Corporate Accent Bar
-      vPage.drawRectangle({
-        x: 0,
-        y: pHeight - 8,
-        width: pWidth,
-        height: 8,
-        color: rgb(0.85, 0.55, 0.1),
-      })
+      // Top Header Section: Logo INL + Corporate Title (Align Start at margin x: 45)
+      const line1 = 'PT INDUSTRI NABATI LESTARI'
+      const line2 = 'LEMBAR OTENTIKASI & VERIFIKASI DOKUMEN'
+      const line3 = 'Sistem Dokumen Terkontroli SSO · INL Digital Identity'
 
-      // Top Header Section: Logo INL Left + Corporate Title Right
+      let logoW = 175
+      let logoH = 50
+
       if (logoImage) {
-        const logoW = 120
-        const logoH = logoImage.height * (logoW / logoImage.width)
+        const maxLogoH = 54
+        const maxLogoW = 180
+        logoW = maxLogoW
+        logoH = logoImage.height * (logoW / logoImage.width)
+        if (logoH > maxLogoH) {
+          logoH = maxLogoH
+          logoW = logoImage.width * (logoH / logoImage.height)
+        }
+      }
+
+      const logoX = 45
+      const gapBetween = 16
+      const headerTextX = logoX + logoW + gapBetween
+
+      if (logoImage) {
         vPage.drawImage(logoImage, {
-          x: 45,
-          y: pHeight - 65,
+          x: logoX,
+          y: pHeight - 22 - logoH,
           width: logoW,
           height: logoH,
         })
       } else {
-        vPage.drawText('PT INDUSTRI NABATI LESTARI', {
-          x: 45,
-          y: pHeight - 50,
+        vPage.drawText(line1, {
+          x: logoX,
+          y: pHeight - 48,
           size: 14,
           font,
           color: rgb(0.85, 0.55, 0.1),
         })
       }
 
-      // Title Header Right
-      vPage.drawText('PT INDUSTRI NABATI LESTARI', {
-        x: pWidth - 330,
-        y: pHeight - 38,
+      vPage.drawText(line1, {
+        x: headerTextX,
+        y: pHeight - 34,
         size: 10.5,
         font,
         color: rgb(0.06, 0.09, 0.16),
       })
-      vPage.drawText('LEMBAR OTENTIKASI & VERIFIKASI DOKUMEN', {
-        x: pWidth - 330,
-        y: pHeight - 52,
-        size: 11.5,
+      vPage.drawText(line2, {
+        x: headerTextX,
+        y: pHeight - 48,
+        size: 11,
         font,
         color: rgb(0.85, 0.55, 0.1),
       })
-      vPage.drawText('Sistem Dokumen Terkontroli SSO · INL Digital Identity', {
-        x: pWidth - 330,
-        y: pHeight - 66,
+      vPage.drawText(line3, {
+        x: headerTextX,
+        y: pHeight - 62,
         size: 8.5,
         font: fontRegular,
         color: rgb(0.4, 0.45, 0.5),
@@ -250,14 +356,14 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
 
       // Top Double Divider Line
       vPage.drawLine({
-        start: { x: 45, y: pHeight - 78 },
-        end: { x: pWidth - 45, y: pHeight - 78 },
+        start: { x: 45, y: pHeight - 84 },
+        end: { x: pWidth - 45, y: pHeight - 84 },
         thickness: 1.5,
         color: rgb(0.85, 0.55, 0.1),
       })
       vPage.drawLine({
-        start: { x: 45, y: pHeight - 81 },
-        end: { x: pWidth - 45, y: pHeight - 81 },
+        start: { x: 45, y: pHeight - 87 },
+        end: { x: pWidth - 45, y: pHeight - 87 },
         thickness: 0.5,
         color: rgb(0.7, 0.75, 0.8),
       })
@@ -265,7 +371,7 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
       // Status Box (Emerald / Green Verified Banner)
       vPage.drawRectangle({
         x: 45,
-        y: pHeight - 145,
+        y: pHeight - 150,
         width: pWidth - 90,
         height: 50,
         color: rgb(0.92, 0.97, 0.94),
@@ -275,21 +381,21 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
 
       vPage.drawText('DOKUMEN TERKONTROLI & SAH TERVERIFIKASI', {
         x: 65,
-        y: pHeight - 118,
+        y: pHeight - 123,
         size: 12,
         font,
         color: rgb(0.02, 0.45, 0.25),
       })
       vPage.drawText('Berkas ini telah disahkan secara digital melalui Portal Dokumen Resmi PT Industri Nabati Lestari.', {
         x: 65,
-        y: pHeight - 134,
+        y: pHeight - 139,
         size: 8.5,
         font: fontRegular,
         color: rgb(0.2, 0.35, 0.25),
       })
 
       // Section 1: Informasi Dokumen
-      let currentY = pHeight - 172
+      let currentY = pHeight - 177
 
       vPage.drawText('1. INFORMASI BERKAS DOKUMEN', {
         x: 45,
@@ -441,53 +547,6 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
         size: 7,
         font: fontRegular,
         color: rgb(0.5, 0.55, 0.6),
-      })
-
-    } else {
-      // -----------------------------------------------------------------
-      // MODE 2: PREVIEW MODE (ONLY CORNER QR STAMP)
-      // -----------------------------------------------------------------
-      pages.forEach(page => {
-        const { width, height } = page.getSize()
-
-        // 2. Official Bottom-Right Verification Stamp (QR Code + Gray Text "Ditandatangani secara elektronik" - No Border)
-        const qrSize = 54
-        const stampText = 'Ditandatangani secara elektronik'
-        const fontSize = 6.5
-        const textWidth = fontRegular.widthOfTextAtSize(stampText, fontSize)
-
-        const boxWidth = Math.max(qrSize + 16, textWidth + 14)
-        const boxHeight = qrSize + 18
-
-        const boxMarginRight = 16
-        const boxMarginBottom = 14
-        const boxX = Math.max(10, width - boxWidth - boxMarginRight)
-        const boxY = boxMarginBottom
-
-        // Draw QR code centered (without border)
-        const qrX = boxX + (boxWidth - qrSize) / 2
-        const qrY = boxY + 13
-
-        if (qrImage) {
-          page.drawImage(qrImage, {
-            x: qrX,
-            y: qrY,
-            width: qrSize,
-            height: qrSize,
-          })
-        }
-
-        // Draw gray text centered below QR code
-        const textX = boxX + (boxWidth - textWidth) / 2
-        const textY = boxY + 4.5
-
-        page.drawText(stampText, {
-          x: textX,
-          y: textY,
-          size: fontSize,
-          font: fontRegular,
-          color: rgb(0.45, 0.48, 0.52),
-        })
       })
     }
 

@@ -49,16 +49,9 @@ export const documentCategories = pgTable('document_categories', {
   id: uuid('id').primaryKey().$defaultFn(genUUID),
   name: varchar('name', { length: 150 }).notNull(),
   code: varchar('code', { length: 40 }).notNull().unique(),
-  defaultConfidentialityLevel: integer('default_confidentiality_level').notNull(),
-  autoApproveGradeLevel: integer('auto_approve_grade_level').references(() => refGrade.level, {
-    onUpdate: 'cascade',
-    onDelete: 'restrict',
-  }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, table => [
-  check('document_categories_confidentiality_check', sql`${table.defaultConfidentialityLevel} BETWEEN 1 AND 4`),
-])
+})
 
 export const documents = pgTable('documents', {
   id: uuid('id').primaryKey().$defaultFn(genUUID),
@@ -68,7 +61,6 @@ export const documents = pgTable('documents', {
   filePath: varchar('file_path', { length: 500 }).notNull().unique(),
   fileSize: integer('file_size').notNull(),
   mimeType: varchar('mime_type', { length: 150 }).notNull(),
-  confidentialityLevel: integer('confidentiality_level'),
   ownerUnitId: uuid('owner_unit_id').references(() => unitOrganisasi.id, { onDelete: 'restrict' }),
   uploadedBy: uuid('uploaded_by').notNull().references(() => employee.id, { onDelete: 'restrict' }),
   version: integer('version').notNull().default(1),
@@ -78,7 +70,6 @@ export const documents = pgTable('documents', {
 }, table => [
   check('documents_file_size_check', sql`${table.fileSize} > 0`),
   check('documents_version_check', sql`${table.version} >= 1`),
-  check('documents_confidentiality_check', sql`${table.confidentialityLevel} IS NULL OR ${table.confidentialityLevel} BETWEEN 1 AND 4`),
   index('documents_category_id_idx').on(table.categoryId),
   index('documents_owner_unit_id_idx').on(table.ownerUnitId),
   index('documents_uploaded_by_idx').on(table.uploadedBy),

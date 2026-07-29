@@ -347,12 +347,22 @@ export default async function documentRoutes(fastify: FastifyInstance) {
       }
       if (!savedFile) throw httpError(422, 'File dokumen wajib dipilih')
 
+      let targetUnitIds: string[] | undefined
+      if (fields.targetUnitIds) {
+        try {
+          targetUnitIds = JSON.parse(fields.targetUnitIds)
+        } catch {
+          targetUnitIds = fields.targetUnitIds.split(',').map(s => s.trim()).filter(Boolean)
+        }
+      }
+
       const input = createDocumentSchema.parse({
         categoryId: fields.categoryId,
         title: fields.title,
         description: fields.description || null,
         ownerUnitId: fields.ownerUnitId || null,
-        confidentialityLevel: fields.confidentialityLevel || null,
+        targetUnitIds,
+        includeDescendants: fields.includeDescendants !== undefined ? fields.includeDescendants === 'true' : true,
         fileSize: savedFile.fileSize,
         mimeType: savedFile.mimeType,
       })

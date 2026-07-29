@@ -15,8 +15,6 @@ export const documentAuditActions = [
 export const createDocumentCategorySchema = z.object({
   name: z.string().trim().min(2).max(150),
   code: z.string().trim().min(2).max(40).regex(/^[A-Z0-9_-]+$/, 'Kode hanya boleh berisi huruf kapital, angka, underscore, atau strip'),
-  defaultConfidentialityLevel: z.coerce.number().int().min(1).max(4),
-  autoApproveGradeLevel: z.coerce.number().int().positive().nullable().optional(),
 })
 
 export const updateDocumentCategorySchema = createDocumentCategorySchema.partial()
@@ -26,14 +24,20 @@ export const createDocumentSchema = z.object({
   title: z.string().trim().min(3).max(300),
   description: z.string().trim().max(5000).nullable().optional(),
   ownerUnitId: z.string().uuid().nullable().optional(),
-  confidentialityLevel: z.coerce.number().int().min(1).max(4).nullable().optional(),
+  targetUnitIds: z.array(z.string().uuid()).optional(),
+  includeDescendants: z.coerce.boolean().optional().default(true),
   fileSize: z.coerce.number().int().positive(),
   mimeType: z.string().trim().min(1).max(150),
 })
 
-export const updateDocumentSchema = createDocumentSchema
-  .omit({ fileSize: true, mimeType: true })
-  .partial()
+export const updateDocumentSchema = z.object({
+  categoryId: z.string().uuid().optional(),
+  title: z.string().trim().min(3).max(300).optional(),
+  description: z.string().trim().max(5000).nullable().optional(),
+  ownerUnitId: z.string().uuid().nullable().optional(),
+  targetUnitIds: z.array(z.string().uuid()).optional(),
+  includeDescendants: z.coerce.boolean().optional().default(true),
+})
 
 export const createAccessRuleSchema = z.object({
   documentId: z.string().uuid().nullable().optional(),
