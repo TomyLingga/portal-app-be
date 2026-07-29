@@ -8,6 +8,7 @@ import fastifyStatic from '@fastify/static'
 import multipart    from '@fastify/multipart'
 import { config }   from './config/env'
 import { errorHandler } from './utils/errorHandler'
+import { expandDevelopmentLoopbackOrigins } from './utils/cors'
 
 import jwtPlugin    from './plugins/jwt'
 import authPlugin   from './plugins/auth'
@@ -19,6 +20,9 @@ import organisasiRoutes from './routes/organisasi.route'
 import aplikasiRoutes   from './routes/aplikasi.route'
 import ssoRoutes        from './routes/sso.route'
 import masterRoutes     from './routes/master.route'
+import documentRoutes   from './routes/document.route'
+import notificationRoutes from './routes/notification.route'
+import portalBrandingRoutes from './routes/portal-branding.route'
 
 // ─── Pastikan folder uploads ada ─────────────────────────────────────────────
 const uploadDir = path.resolve(config.upload.dir)
@@ -36,10 +40,10 @@ const fastify = Fastify({
   trustProxy: true,
 })
 
-const allowedOrigins = new Set([
-  config.app.frontendUrl,
-  ...config.webauthn.expectedOrigins,
-])
+const allowedOrigins = expandDevelopmentLoopbackOrigins(
+  [config.app.frontendUrl, ...config.webauthn.expectedOrigins],
+  config.app.nodeEnv,
+)
 
 type RateBucket = { count: number; resetAt: number }
 const rateBuckets = new Map<string, RateBucket>()
@@ -75,7 +79,7 @@ function rateLimitFor(ip: string, url: string) {
 fastify.setErrorHandler(errorHandler)
 
 // ─── Plugins ──────────────────────────────────────────────────────────────────
-async function buildApp() {
+export async function buildApp() {
   fastify.addHook('onRequest', async (request, reply) => {
     reply.header('X-Content-Type-Options', 'nosniff')
     reply.header('X-Frame-Options', 'DENY')
@@ -110,11 +114,20 @@ async function buildApp() {
     credentials: true,
   })
   await fastify.register(multipart, {
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+    limits: { fileSize: config.documents.maxFileSizeBytes },
   })
   await fastify.register(fastifyStatic, {
-    root:   uploadDir,
+    root: uploadDir,
     prefix: '/uploads/',
+  })
+
+  fastify.setNotFoundHandler((request, reply) => {
+    if (request.url.startsWith('/uploads/')) {
+      reply.header('Content-Type', 'image/svg+xml')
+      reply.header('Cache-Control', 'public, max-age=86400')
+      return reply.status(200).send('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>')
+    }
+    return reply.status(404).send({ statusCode: 404, error: 'Not Found', message: 'Rute tidak ditemukan' })
   })
 
   await fastify.register(jwtPlugin)
@@ -128,6 +141,9 @@ async function buildApp() {
   await fastify.register(aplikasiRoutes,   { prefix: '/api/apps'   })
   await fastify.register(ssoRoutes,        { prefix: '/api/sso'    })
   await fastify.register(masterRoutes,     { prefix: '/api/master' })
+  await fastify.register(documentRoutes,   { prefix: '/api/documents' })
+  await fastify.register(notificationRoutes, { prefix: '/api/notifications' })
+  await fastify.register(portalBrandingRoutes, { prefix: '/api/settings' })
 
   // ─── Health check ────────────────────────────────────────────────────────────
   fastify.get('/health', async () => ({
@@ -141,6 +157,7 @@ async function buildApp() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+if (require.main === module) {
 buildApp()
   .then(app => app.listen({ port: config.app.port, host: config.app.host }))
   .then(() => {
@@ -152,3 +169,4 @@ buildApp()
     console.error(err)
     process.exit(1)
   })
+}

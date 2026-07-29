@@ -1,6 +1,6 @@
-# INL Portal API
+# InTes (Integrated Enterprise System) API
 
-Backend REST API untuk INL Portal — dibangun dengan **Fastify v4 + TypeScript + Drizzle ORM + PostgreSQL**.
+Backend REST API untuk InTes (Integrated Enterprise System) — dibangun dengan **Fastify v4 + TypeScript + Drizzle ORM + PostgreSQL**.
 
 ## Tech Stack
 

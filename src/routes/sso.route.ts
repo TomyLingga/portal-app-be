@@ -103,4 +103,41 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
     const rows = await db.select().from(refGrade).orderBy(refGrade.level)
     return reply.send(ok(rows))
   })
+
+  /**
+   * GET /api/sso/organization-units
+   * Master unit organisasi untuk backend aplikasi client.
+   */
+  fastify.get('/organization-units', async (request, reply) => {
+    if (request.headers['x-internal'] !== config.sso.internalToken) {
+      return reply.code(403).send({ success: false, error: 'Forbidden' })
+    }
+    const rows = await db
+      .select({
+        id: unitOrganisasi.id,
+        kode: unitOrganisasi.kode,
+        nama: unitOrganisasi.nama,
+        tipe: unitOrganisasi.tipe,
+        parentId: unitOrganisasi.parentId,
+        isActive: unitOrganisasi.isActive,
+      })
+      .from(unitOrganisasi)
+      .orderBy(unitOrganisasi.nama)
+    return reply.send(ok(rows))
+  })
+
+  /**
+   * GET /api/sso/placements
+   * Master area penempatan untuk backend aplikasi client.
+   */
+  fastify.get('/placements', async (request, reply) => {
+    if (request.headers['x-internal'] !== config.sso.internalToken) {
+      return reply.code(403).send({ success: false, error: 'Forbidden' })
+    }
+    const rows = await db
+      .select()
+      .from(refPenempatanArea)
+      .orderBy(refPenempatanArea.nama)
+    return reply.send(ok(rows))
+  })
 }

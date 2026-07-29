@@ -1,6 +1,6 @@
 // ─── Schema: Organisasi (Hierarki Self-Referencing) ───────────────────────────
 import crypto from 'crypto'
-import { pgTable, uuid, varchar, boolean, pgEnum } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, varchar, boolean, pgEnum, index } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
 const genUUID = () => crypto.randomUUID()
@@ -22,7 +22,9 @@ export const unitOrganisasi = pgTable('unit_organisasi', {
   tipe:     tipeUnitEnum('tipe').notNull(),
   parentId: uuid('parent_id').references((): any => unitOrganisasi.id),
   isActive: boolean('is_active').notNull().default(true),
-})
+}, table => [
+  index('unit_organisasi_parent_id_idx').on(table.parentId),
+])
 
 // ─── Relations ────────────────────────────────────────────────────────────────
 export const unitOrganisasiRelations = relations(unitOrganisasi, ({ one, many }) => ({

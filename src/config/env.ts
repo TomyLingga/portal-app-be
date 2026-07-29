@@ -36,6 +36,8 @@ const envSchema = z.object({
   // Upload
   UPLOAD_DIR: z.string().default('uploads'),
   UPLOAD_URL: z.string().url().optional(),
+  DOCUMENT_UPLOAD_DIR: z.string().default('document-storage'),
+  DOCUMENT_MAX_FILE_SIZE_MB: z.coerce.number().int().min(1).max(250).default(50),
 
   // Seed
   SEED_ADMIN_EMAIL:    z.string().email().default('admin@inl.co.id'),
@@ -122,6 +124,10 @@ export const config = {
   upload: {
     dir: env.UPLOAD_DIR,
     url: env.UPLOAD_URL || `${env.FRONTEND_URL}/uploads`,
+  },
+  documents: {
+    dir: env.DOCUMENT_UPLOAD_DIR,
+    maxFileSizeBytes: env.DOCUMENT_MAX_FILE_SIZE_MB * 1024 * 1024,
   },
   seed: {
     adminEmail:    env.SEED_ADMIN_EMAIL,

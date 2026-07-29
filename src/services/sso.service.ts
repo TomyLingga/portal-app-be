@@ -1,6 +1,7 @@
 // ─── Service: SSO ─────────────────────────────────────────────────────────────
 import crypto           from 'crypto'
 import { eq, and }      from 'drizzle-orm'
+import { alias }        from 'drizzle-orm/pg-core'
 import { db }           from '../db'
 import {
   ssoToken,
@@ -102,7 +103,9 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
     .set({ isRevoked: true })
     .where(eq(ssoToken.id, found.id))
 
-  // Ambil data user + employee ringkas untuk cache lokal aplikasi SSO.
+  // Ambil profil kerja employee. Data personal sensitif seperti NIK, alamat,
+  // nomor HP, tanggal lahir, agama, dan status pernikahan tidak dikirim lewat SSO.
+  const atasan = alias(employee, 'sso_employee_atasan')
   const [userData] = await db
     .select({
       id:        userTable.id,
@@ -110,9 +113,17 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
       role:      userTable.role,
       isActive:  userTable.isActive,
       employeeId:userTable.employeeId,
+      employeeNrk: employee.nrk,
       employeeNama: employee.nama,
+      employeeJenisKelamin: employee.jenisKelamin,
       employeeJabatan: employee.jabatan,
+      employeeTanggalMasuk: employee.tanggalMasuk,
       employeeFoto: employee.fotoProfil,
+      employeeIsActive: employee.isActive,
+      employeeAtasanId: employee.atasanId,
+      atasanNrk: atasan.nrk,
+      atasanNama: atasan.nama,
+      atasanJabatan: atasan.jabatan,
       gradeId: refGrade.id,
       gradeKode: refGrade.kode,
       gradeLabel: refGrade.label,
@@ -120,13 +131,17 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
       unitId: unitOrganisasi.id,
       unitNama: unitOrganisasi.nama,
       unitKode: unitOrganisasi.kode,
+      unitTipe: unitOrganisasi.tipe,
+      unitParentId: unitOrganisasi.parentId,
       penempatanAreaId: refPenempatanArea.id,
+      penempatanAreaKode: refPenempatanArea.kode,
       penempatanAreaNama: refPenempatanArea.nama,
       penempatanLatitude: refPenempatanArea.latitude,
       penempatanLongitude: refPenempatanArea.longitude,
     })
     .from(userTable)
     .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .leftJoin(atasan, eq(employee.atasanId, atasan.id))
     .leftJoin(refGrade, eq(employee.gradeId, refGrade.id))
     .leftJoin(unitOrganisasi, eq(employee.unitOrganisasiId, unitOrganisasi.id))
     .leftJoin(refPenempatanArea, eq(employee.penempatanAreaId, refPenempatanArea.id))
@@ -134,6 +149,29 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
     .limit(1)
 
   if (!userData || !userData.isActive) throw new Error('User tidak aktif')
+
+  const organizationRows = userData.unitId
+    ? await db
+        .select({
+          id: unitOrganisasi.id,
+          kode: unitOrganisasi.kode,
+          nama: unitOrganisasi.nama,
+          tipe: unitOrganisasi.tipe,
+          parentId: unitOrganisasi.parentId,
+        })
+        .from(unitOrganisasi)
+    : []
+  const organizationById = new Map(organizationRows.map(unit => [unit.id, unit]))
+  const organizationHierarchy: typeof organizationRows = []
+  const visitedUnitIds = new Set<string>()
+  let currentUnitId: string | null = userData.unitId
+  while (currentUnitId && !visitedUnitIds.has(currentUnitId)) {
+    visitedUnitIds.add(currentUnitId)
+    const currentUnit = organizationById.get(currentUnitId)
+    if (!currentUnit) break
+    organizationHierarchy.unshift(currentUnit)
+    currentUnitId = currentUnit.parentId
+  }
 
   return {
     id: userData.id,
@@ -143,10 +181,20 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
     employeeId: userData.employeeId,
     employee: userData.employeeId ? {
       id: userData.employeeId,
+      nrk: userData.employeeNrk,
       nama: userData.employeeNama,
       namaLengkap: userData.employeeNama,
+      jenisKelamin: userData.employeeJenisKelamin,
       jabatan: userData.employeeJabatan,
+      tanggalMasuk: userData.employeeTanggalMasuk,
       fotoProfil: buildFileUrl(userData.employeeFoto),
+      isActive: userData.employeeIsActive,
+      atasan: userData.employeeAtasanId ? {
+        id: userData.employeeAtasanId,
+        nrk: userData.atasanNrk,
+        nama: userData.atasanNama,
+        jabatan: userData.atasanJabatan,
+      } : null,
       grade: userData.gradeId ? {
         id: userData.gradeId,
         kode: userData.gradeKode,
@@ -157,9 +205,14 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
         id: userData.unitId,
         kode: userData.unitKode,
         nama: userData.unitNama,
+        tipe: userData.unitTipe,
+        parentId: userData.unitParentId,
+        path: organizationHierarchy.map(unit => unit.nama).join(' / '),
+        hierarchy: organizationHierarchy,
       } : null,
       penempatanArea: userData.penempatanAreaId ? {
         id: userData.penempatanAreaId,
+        kode: userData.penempatanAreaKode,
         nama: userData.penempatanAreaNama,
         latitude: userData.penempatanLatitude,
         longitude: userData.penempatanLongitude,

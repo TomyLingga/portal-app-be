@@ -32,7 +32,7 @@ export const refGrade = pgTable('ref_grade', {
   id:         uuid('id').primaryKey().$defaultFn(genUUID),
   kode:       varchar('kode',       { length: 20  }).notNull().unique(),
   label:      varchar('label',      { length: 100 }).notNull(),
-  level:      integer('level').notNull().default(0),
+  level:      integer('level').notNull().default(0).unique(),
   keterangan: text('keterangan'),
 })
 

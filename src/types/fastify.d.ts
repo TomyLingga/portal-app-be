@@ -11,6 +11,7 @@ declare module '@fastify/jwt' {
       role:         'user' | 'super_admin'
       tokenVersion: number
       purpose?:     string
+      documentId?:  string
     }
     user: {
       sub:          string
@@ -18,6 +19,7 @@ declare module '@fastify/jwt' {
       role:         'user' | 'super_admin'
       tokenVersion: number
       purpose?:     string
+      documentId?:  string
     }
   }
 }

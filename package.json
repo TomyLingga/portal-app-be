@@ -1,7 +1,7 @@
 {
   "name": "inl-portal-api",
   "version": "1.0.0",
-  "description": "INL Portal REST API — Fastify + TypeScript + Drizzle ORM + PostgreSQL",
+  "description": "InTes (Integrated Enterprise System) REST API — Fastify + TypeScript + Drizzle ORM + PostgreSQL",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -11,7 +11,9 @@
     "db:migrate": "tsx src/db/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:documents": "tsx src/db/verify-document-module.ts",
+    "test:documents:http": "tsx src/db/document-http.integration.ts"
   },
   "keywords": [],
   "author": "",
@@ -22,13 +24,16 @@
     "@fastify/multipart": "^8.3.0",
     "@fastify/static": "^7.0.4",
     "@simplewebauthn/server": "^13.3.2",
+    "@types/qrcode": "^1.5.6",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "fastify": "^4.28.1",
     "fastify-plugin": "^4.5.1",
     "nodemailer": "^9.0.1",
+    "pdf-lib": "^1.17.1",
     "postgres": "^3.4.9",
+    "qrcode": "^1.5.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
