@@ -188,8 +188,8 @@ CREATE INDEX "document_audit_log_action_idx" ON "document_audit_log" USING btree
 CREATE INDEX "portal_notification_user_unread_idx" ON "portal_notification" USING btree ("user_id", "is_read", "created_at");
 --> statement-breakpoint
 INSERT INTO "document_categories" ("id", "name", "code", "default_confidentiality_level") VALUES
-  ('10000000-0000-4000-8000-000000000001', 'SOP', 'SOP', 2),
-  ('10000000-0000-4000-8000-000000000002', 'Laporan Keuangan', 'LK', 4),
-  ('10000000-0000-4000-8000-000000000003', 'Pedoman Bisnis', 'PB', 3),
-  ('10000000-0000-4000-8000-000000000004', 'Annual Report', 'ANNUAL', 1)
+  (gen_random_uuid(), 'SOP', 'SOP', 2),
+  (gen_random_uuid(), 'Laporan Keuangan', 'LK', 4),
+  (gen_random_uuid(), 'Pedoman Bisnis', 'PB', 3),
+  (gen_random_uuid(), 'Annual Report', 'ANNUAL', 1)
 ON CONFLICT ("code") DO NOTHING;

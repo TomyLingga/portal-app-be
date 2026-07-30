@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, or, SQL, sql } from 'drizzle-orm'
+import { and, count, desc, eq, ilike, ne, or, SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db'
 import {
@@ -74,6 +74,8 @@ export async function listDocumentCategoriesService() {
       id: documentCategories.id,
       name: documentCategories.name,
       code: documentCategories.code,
+      defaultConfidentialityLevel: documentCategories.defaultConfidentialityLevel,
+      autoApproveGradeLevel: documentCategories.autoApproveGradeLevel,
       createdAt: documentCategories.createdAt,
       updatedAt: documentCategories.updatedAt,
     })
@@ -82,19 +84,70 @@ export async function listDocumentCategoriesService() {
 }
 
 export async function createDocumentCategoryService(input: CreateDocumentCategoryInput) {
+  const formattedCode = input.code.toUpperCase()
+
+  const [existingCode] = await db
+    .select({ id: documentCategories.id })
+    .from(documentCategories)
+    .where(eq(documentCategories.code, formattedCode))
+    .limit(1)
+
+  if (existingCode) {
+    throw httpError(400, `Kode kategori '${formattedCode}' sudah digunakan.`)
+  }
+
+  const [existingName] = await db
+    .select({ id: documentCategories.id })
+    .from(documentCategories)
+    .where(eq(documentCategories.name, input.name))
+    .limit(1)
+
+  if (existingName) {
+    throw httpError(400, `Nama kategori '${input.name}' sudah digunakan.`)
+  }
+
   const [created] = await db.insert(documentCategories).values({
     name: input.name,
-    code: input.code.toUpperCase(),
+    code: formattedCode,
+    defaultConfidentialityLevel: input.defaultConfidentialityLevel ?? 1,
+    autoApproveGradeLevel: input.autoApproveGradeLevel ?? null,
   }).returning()
+
   return created
 }
 
 export async function updateDocumentCategoryService(id: string, input: UpdateDocumentCategoryInput) {
+  if (input.code) {
+    const formattedCode = input.code.toUpperCase()
+    const [existingCode] = await db
+      .select({ id: documentCategories.id })
+      .from(documentCategories)
+      .where(and(eq(documentCategories.code, formattedCode), ne(documentCategories.id, id)))
+      .limit(1)
+
+    if (existingCode) {
+      throw httpError(400, `Kode kategori '${formattedCode}' sudah digunakan.`)
+    }
+  }
+
+  if (input.name) {
+    const [existingName] = await db
+      .select({ id: documentCategories.id })
+      .from(documentCategories)
+      .where(and(eq(documentCategories.name, input.name), ne(documentCategories.id, id)))
+      .limit(1)
+
+    if (existingName) {
+      throw httpError(400, `Nama kategori '${input.name}' sudah digunakan.`)
+    }
+  }
+
   const [updated] = await db.update(documentCategories).set({
     ...input,
     code: input.code?.toUpperCase(),
     updatedAt: new Date(),
   }).where(eq(documentCategories.id, id)).returning()
+
   if (!updated) throw httpError(404, 'Kategori dokumen tidak ditemukan')
   return updated
 }

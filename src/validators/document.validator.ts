@@ -15,6 +15,8 @@ export const documentAuditActions = [
 export const createDocumentCategorySchema = z.object({
   name: z.string().trim().min(2).max(150),
   code: z.string().trim().min(2).max(40).regex(/^[A-Z0-9_-]+$/, 'Kode hanya boleh berisi huruf kapital, angka, underscore, atau strip'),
+  defaultConfidentialityLevel: z.coerce.number().int().min(1).max(4).optional().default(1),
+  autoApproveGradeLevel: z.coerce.number().int().positive().nullable().optional(),
 })
 
 export const updateDocumentCategorySchema = createDocumentCategorySchema.partial()

@@ -117,6 +117,14 @@ export function errorHandler(error: unknown, request: FastifyRequest, reply: Fas
 
   const err = error as any
 
+  // Operational HTTP Errors (400-499) thrown intentionally with user messages
+  if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+    return reply.code(err.statusCode).send({
+      success: false,
+      error: err.message,
+    })
+  }
+
   // Handle foreign key constraint violation (linked to other data)
   const isForeignKeyError =
     err.code === '23503' ||
@@ -132,7 +140,47 @@ export function errorHandler(error: unknown, request: FastifyRequest, reply: Fas
   if (isForeignKeyError) {
     return reply.code(400).send({
       success: false,
-      error: 'Data tidak dapat dihapus karena sedang digunakan atau terikat dengan data lain.'
+      error: 'Data tidak dapat dihapus atau diproses karena terikat dengan data lain.',
+    })
+  }
+
+  // Handle unique constraint violation (duplicate key)
+  const isUniqueError =
+    err.code === '23505' ||
+    err.cause?.code === '23505' ||
+    err.originalError?.code === '23505' ||
+    String(err.message || '').includes('violates unique constraint') ||
+    String(err.cause?.message || '').includes('violates unique constraint') ||
+    String(err.originalError?.message || '').includes('violates unique constraint');
+
+  if (isUniqueError) {
+    const detail = String(err.detail || err.cause?.detail || err.message || '');
+    let customMsg = 'Data yang dimasukkan sudah terdaftar atau duplikat.';
+    const keyMatch = detail.match(/Key \(([^)]+)\)=\(([^)]+)\)/);
+    if (keyMatch) {
+      const rawField = keyMatch[1];
+      const val = keyMatch[2];
+      const field = validationFieldLabels[rawField] || rawField;
+      customMsg = `${field} '${val}' sudah digunakan.`;
+    }
+    return reply.code(400).send({
+      success: false,
+      error: customMsg,
+    })
+  }
+
+  // Handle NOT NULL constraint violation
+  const isNotNullError =
+    err.code === '23502' ||
+    err.cause?.code === '23502' ||
+    err.originalError?.code === '23502' ||
+    String(err.message || '').includes('violates not-null constraint') ||
+    String(err.cause?.message || '').includes('violates not-null constraint');
+
+  if (isNotNullError) {
+    return reply.code(400).send({
+      success: false,
+      error: 'Terdapat data wajib yang belum diisi.',
     })
   }
 

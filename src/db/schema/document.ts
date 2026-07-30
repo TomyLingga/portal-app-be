@@ -49,6 +49,8 @@ export const documentCategories = pgTable('document_categories', {
   id: uuid('id').primaryKey().$defaultFn(genUUID),
   name: varchar('name', { length: 150 }).notNull(),
   code: varchar('code', { length: 40 }).notNull().unique(),
+  defaultConfidentialityLevel: integer('default_confidentiality_level').notNull().default(1),
+  autoApproveGradeLevel: integer('auto_approve_grade_level'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
