@@ -117,6 +117,19 @@ export function errorHandler(error: unknown, request: FastifyRequest, reply: Fas
 
   const err = error as any
 
+  // Handle ENOENT (file static not found) & 404 errors
+  if (err.code === 'ENOENT' || err.statusCode === 404) {
+    if (request.url.startsWith('/uploads/')) {
+      reply.header('Content-Type', 'image/svg+xml')
+      reply.header('Cache-Control', 'public, max-age=86400')
+      return reply.status(200).send('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>')
+    }
+    return reply.code(404).send({
+      success: false,
+      error: 'File atau resource tidak ditemukan.',
+    })
+  }
+
   // Operational HTTP Errors (400-499) thrown intentionally with user messages
   if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
     return reply.code(err.statusCode).send({
