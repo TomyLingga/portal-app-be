@@ -9,6 +9,10 @@ import { eq, desc }          from 'drizzle-orm'
 import { getMasterStatsService, getPaginatedLogsService, getUsersOptionsService } from '../services/master.service'
 import { checkDomainStatus, checkDatabaseStatus, checkStorageStatus, checkSSLCertificate, checkAppStatus, checkApiStatus } from '../services/health.service'
 
+// Cache hasil health check — lihat komentar di route /health.
+const HEALTH_CACHE_TTL_MS = 60_000
+let healthCache: { at: number; payload: Record<string, unknown> } | null = null
+
 /**
  * Helper to validate required request body fields.
  * Sends 400 response and returns false if any field is missing or empty.
@@ -325,8 +329,15 @@ export default async function masterRoutes(fastify: FastifyInstance) {
       startDate?: string
       endDate?: string
     }
-    const page = query.page ? parseInt(query.page, 10) : 1
-    const limit = query.limit ? parseInt(query.limit, 10) : 10
+    /*
+     * Dulu `limit` hanya dibatasi bawah (Math.max(1, ...)), jadi ?limit=100000000
+     * menarik seluruh activity_log (3 join, tanpa indeks) ke satu response — dan
+     * ?limit=abc menghasilkan `LIMIT NaN` → 500. Sekarang di-clamp keras.
+     */
+    const parsedPage = Number.parseInt(query.page ?? '', 10)
+    const parsedLimit = Number.parseInt(query.limit ?? '', 10)
+    const page = Number.isFinite(parsedPage) && parsedPage >= 1 ? parsedPage : 1
+    const limit = Number.isFinite(parsedLimit) && parsedLimit >= 1 ? Math.min(parsedLimit, 100) : 10
     const search = query.search
     const userId = query.userId
     const appId = query.appId
@@ -353,8 +364,19 @@ export default async function masterRoutes(fastify: FastifyInstance) {
     }
   })
 
-  // GET /api/master/health
+  /*
+   * GET /api/master/health — endpoint termahal di portal.
+   *
+   * Satu panggilan melakukan probe HTTPS + TLS handshake ke domain monitor, statfs,
+   * SELECT 1, plus satu GET keluar per aplikasi aktif. Dashboard admin memollnya
+   * tiap 10 detik, jadi hasilnya di-cache 60 detik dan dipakai bersama semua admin —
+   * tanpa mengubah bentuk response.
+   */
   fastify.get('/health', { preHandler: adminOnly }, async (_request, reply) => {
+    const cached = healthCache
+    if (cached && Date.now() - cached.at < HEALTH_CACHE_TTL_MS) {
+      return reply.send(ok({ ...cached.payload, uptime: process.uptime(), cached: true }))
+    }
     try {
       const uploadDir = path.resolve(config.upload.dir)
       const monitorDomain = config.monitor.domain
@@ -379,8 +401,7 @@ export default async function masterRoutes(fastify: FastifyInstance) {
         return { id: app.id, nama: app.nama, url: app.url, icon: app.icon, ...result }
       }))
 
-      return reply.send(ok({
-        uptime: process.uptime(),
+      const payload = {
         // Sertakan host yang dipantau agar frontend menampilkan target sungguhan,
         // bukan label statis.
         domain: { ...domain, host: monitorDomain },
@@ -393,7 +414,10 @@ export default async function masterRoutes(fastify: FastifyInstance) {
         storage,
         ssl: { ...ssl, host: monitorDomain },
         apps,
-      }))
+      }
+      healthCache = { at: Date.now(), payload }
+
+      return reply.send(ok({ uptime: process.uptime(), ...payload }))
     } catch (error) {
       fastify.log.error(error)
       return reply.code(500).send({ success: false, error: 'Internal Server Error' })

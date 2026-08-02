@@ -336,13 +336,25 @@ export async function getDocumentCapabilitiesService(userId: string) {
 export async function claimDocumentDownloadTokenService(token: string, metadata?: Record<string, unknown>) {
   const now = new Date()
   const claimed = await db.transaction(async tx => {
+    /*
+     * Token unduh sekali pakai.
+     *
+     * Dulu `downloadedAt` di-set dengan COALESCE tanpa dipakai sebagai syarat, jadi
+     * satu link tetap sah berulang kali sampai masa berlakunya habis (bisa sampai
+     * 365 hari) — padahal token itu berada di path URL sehingga mudah bocor lewat
+     * riwayat browser, log proxy, atau diteruskan ke orang lain. Sekarang klaim
+     * hanya berhasil bila `downloaded_at` masih NULL, dan operasinya atomik dalam
+     * satu UPDATE ... RETURNING sehingga dua permintaan paralel tidak bisa
+     * dua-duanya lolos.
+     */
     const [requestRow] = await tx.update(documentDownloadRequests).set({
-      downloadedAt: sql`COALESCE(${documentDownloadRequests.downloadedAt}, NOW())`,
+      downloadedAt: now,
       updatedAt: now,
     }).where(and(
       eq(documentDownloadRequests.downloadToken, token),
       eq(documentDownloadRequests.status, 'approved'),
       gt(documentDownloadRequests.tokenExpiresAt, now),
+      isNull(documentDownloadRequests.downloadedAt),
     )).returning()
     if (!requestRow) return null
     const [document] = await tx.select({

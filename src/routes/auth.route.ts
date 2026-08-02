@@ -31,6 +31,25 @@ import { ok, err }         from '../utils/response'
 import { db }              from '../db'
 import { activityLog }     from '../db/schema'
 import { clearAuthCookies, getRefreshCookie, setAuthCookies } from '../utils/cookie'
+import { z } from 'zod'
+
+// Kebijakan password dipakai bersama oleh ganti-password dan reset-password.
+const strongPasswordSchema = z
+  .string()
+  .min(8, 'Password minimal 8 karakter')
+  .regex(/[A-Z]/, 'Password harus mengandung huruf kapital')
+  .regex(/[0-9]/, 'Password harus mengandung angka')
+
+const changePasswordBodySchema = z.object({
+  currentPassword: z.string().min(1, 'Password saat ini wajib diisi'),
+  newPassword: strongPasswordSchema,
+})
+
+const resetPasswordBodySchema = z.object({
+  token: z.string().min(1, 'Token wajib diisi'),
+  password: strongPasswordSchema,
+})
+
 
 export default async function authRoutes(fastify: FastifyInstance) {
 
@@ -88,10 +107,17 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.put('/password', {
     preHandler: [fastify.authenticate],
   }, async (request, reply) => {
-    const { currentPassword, newPassword } = request.body as { currentPassword?: string, newPassword?: string }
-    if (!currentPassword || !newPassword) {
-      return reply.code(400).send(err('currentPassword dan newPassword wajib diisi'))
+    /*
+     * Kebijakan password (min 8 + kapital + angka) sebelumnya hanya ada di
+     * frontend dan di jalur admin, sehingga satu request langsung ke API bisa
+     * menyetel password satu karakter.
+     */
+    const parsed = changePasswordBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]
+      return reply.code(400).send(err(first?.message ?? 'Password tidak valid'))
     }
+    const { currentPassword, newPassword } = parsed.data
     const result = await changePasswordService(request.user.sub, currentPassword, newPassword)
     return reply.code(200).send(ok(result))
   })
@@ -250,10 +276,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
 
   // POST /api/auth/reset-password
   fastify.post('/reset-password', async (request, reply) => {
-    const { token, password } = request.body as { token: string; password?: string }
-    if (!token || !password) {
-      return reply.code(400).send(err('Token dan password wajib diisi'))
+    const parsed = resetPasswordBodySchema.safeParse(request.body)
+    if (!parsed.success) {
+      const first = parsed.error.issues[0]
+      return reply.code(400).send(err(first?.message ?? 'Data reset password tidak valid'))
     }
+    const { token, password } = parsed.data
     const result = await resetPasswordService(fastify, token, password)
     return reply.code(200).send(ok(result))
   })

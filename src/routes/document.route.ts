@@ -427,7 +427,7 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     return sendDocumentPreview(reply, previewBuffer, doc.title)
   })
 
-  fastify.put('/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.put('/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params)
     const input = updateDocumentSchema.parse(request.body)
     return reply.send(ok(await updateDocumentService(request.user.sub, id, input)))
@@ -438,11 +438,39 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     return reply.send(ok(await listDocumentRevisionsService(request.user.sub, id)))
   })
 
-  fastify.get('/:id/revisions/:version/download', { preHandler: authOnly }, async (request, reply) => {
+  /*
+   * Unduh revisi dulu men-stream berkas MENTAH: tanpa watermark dan tanpa jejak
+   * audit, padahal berkas versi aktif juga tercatat sebagai revisi — jadi jalur ini
+   * adalah pintu belakang untuk mendapatkan salinan bersih. Sekarang perlakuannya
+   * sama dengan jalur unduh resmi: watermark diterapkan dan aksinya dicatat.
+   */
+  fastify.get('/:id/revisions/:version/download', { preHandler: adminOnly }, async (request, reply) => {
     const { id, version } = z.object({ id: z.string().uuid(), version: z.coerce.number().int().positive() }).parse(request.params)
     const { document, version: ver } = await getDocumentVersionFileService(request.user.sub, id, version)
     const file = getDocumentFile(ver.filePath)
     const fileName = documentDownloadName(`${document.title}_v${ver.version}`, ver.mimeType)
+
+    if (ver.mimeType === 'application/pdf') {
+      const chunks: Buffer[] = []
+      for await (const chunk of file.stream) {
+        chunks.push(Buffer.from(chunk))
+      }
+      const watermarked = await applyPdfWatermark(Buffer.concat(chunks), {
+        approverName: 'Unduhan revisi oleh administrator',
+        approvedAt: new Date().toISOString(),
+        requesterName: request.user.email,
+        requesterNrk: '-',
+        reason: `Unduh revisi v${ver.version}`,
+        documentTitle: `${document.title} v${ver.version}`,
+        isDownload: true,
+      })
+
+      reply.header('Content-Type', 'application/pdf')
+      reply.header('Content-Length', String(watermarked.length))
+      reply.header('Content-Disposition', `attachment; filename="${fileName}"`)
+      reply.header('Cache-Control', 'no-store')
+      return reply.send(watermarked)
+    }
 
     reply.header('Content-Type', ver.mimeType)
     reply.header('Content-Length', String(ver.fileSize))
@@ -451,7 +479,7 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     return reply.send(file.stream)
   })
 
-  fastify.post('/:id/revisions', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/:id/revisions', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params)
     if (!request.isMultipart()) throw httpError(415, 'Upload revisi dokumen harus menggunakan multipart/form-data')
     const fields: Record<string, string> = {}
@@ -484,17 +512,17 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     }
   })
 
-  fastify.post('/:id/revisions/:version/activate', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/:id/revisions/:version/activate', { preHandler: adminOnly }, async (request, reply) => {
     const { id, version } = z.object({ id: z.string().uuid(), version: z.coerce.number().int().positive() }).parse(request.params)
     return reply.send(ok(await activateDocumentVersionService(request.user.sub, id, version)))
   })
 
-  fastify.post('/:id/reactivate', { preHandler: authOnly }, async (request, reply) => {
+  fastify.post('/:id/reactivate', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params)
     return reply.send(ok(await reactivateDocumentService(request.user.sub, id)))
   })
 
-  fastify.delete('/:id', { preHandler: authOnly }, async (request, reply) => {
+  fastify.delete('/:id', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params)
     return reply.send(ok(await softDeleteDocumentService(request.user.sub, id)))
   })

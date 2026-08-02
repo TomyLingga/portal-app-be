@@ -441,15 +441,23 @@ export async function createDocumentService(userId: string, input: CreateDocumen
       uploadedBy: actor.employeeId!,
     }).returning()
 
-    if (input.targetUnitIds && input.targetUnitIds.length > 0) {
-      for (const unitId of input.targetUnitIds) {
-        await tx.insert(documentAccessRules).values({
-          documentId: rows[0].id,
-          unitOrganisasiId: unitId,
-          includeDescendants: input.includeDescendants ?? true,
-          accessType: 'view',
-        })
-      }
+    /*
+     * Aturan akses baca dibuat eksplisit. Karena pemeriksaan akses sekarang
+     * fail-closed (tanpa rule = ditolak), unggahan tanpa `targetUnitIds` akan
+     * tidak terlihat oleh siapa pun kecuali pengunggah dan super_admin. Supaya
+     * dokumen tetap berguna, unit pemilik dipakai sebagai target bawaan.
+     */
+    const targetUnitIds = input.targetUnitIds && input.targetUnitIds.length > 0
+      ? input.targetUnitIds
+      : (input.ownerUnitId ? [input.ownerUnitId] : [])
+
+    for (const unitId of targetUnitIds) {
+      await tx.insert(documentAccessRules).values({
+        documentId: rows[0].id,
+        unitOrganisasiId: unitId,
+        includeDescendants: input.includeDescendants ?? true,
+        accessType: 'view',
+      })
     }
 
     await tx.insert(documentVersions).values({
@@ -602,7 +610,20 @@ export async function getDocumentVersionFileService(userId: string, documentId: 
     .limit(1)
   if (!version) throw httpError(404, `Revisi versi v${versionNumber} tidak ditemukan`)
 
-  return { document, version }
+  /*
+   * Unduhan revisi wajib tercatat. Sebelumnya fungsi ini tidak menulis audit apa pun,
+   * sehingga pengambilan salinan versi aktif tidak meninggalkan jejak sama sekali.
+   */
+  if (actor.employeeId) {
+    await logDocumentAction({
+      documentId,
+      employeeId: actor.employeeId,
+      action: 'downloaded',
+      metadata: { via: 'revision-download', version: versionNumber },
+    })
+  }
+
+  return { document, version, actor }
 }
 
 export async function listDocumentRevisionsService(userId: string, documentId: string) {

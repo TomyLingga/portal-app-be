@@ -5,6 +5,7 @@ import { user as userTable, employee, userPasskey, activityLog } from '../db/sch
 import { hashPassword }    from '../utils/hash'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type { CreateUserInput, UpdateUserInput, ListUserQuery } from '../validators/user.validator'
+import { revokeAllRefreshTokens } from './auth.service'
 
 export async function listUsersService(query: ListUserQuery) {
   const { page, limit, offset } = getPaginationParams(query)
@@ -115,13 +116,23 @@ export async function updateUserService(id: string, input: UpdateUserInput, admi
   if (input.role       !== undefined) updateData.role       = input.role
   if (input.isActive   !== undefined) {
     updateData.isActive = input.isActive
-    if (input.isActive === false) {
-      updateData.tokenVersion = sql`${userTable.tokenVersion} + 1` as any
-    }
   }
   if (input.employeeId !== undefined) updateData.employeeId = input.employeeId ?? null
   if (input.password) {
     updateData.passwordHash = await hashPassword(input.password)
+  }
+
+  /*
+   * Setiap perubahan yang mempengaruhi kewenangan atau kredensial harus mematikan
+   * sesi lama: nonaktifkan akun, ganti password oleh admin, atau turun/naik role.
+   * Dulu hanya cabang isActive=false yang menaikkan tokenVersion, sehingga admin
+   * yang mereset password akun terbajak tidak benar-benar mengeluarkan penyerang,
+   * dan super_admin yang diturunkan tetap berwenang sampai access token kedaluwarsa.
+   */
+  const mustInvalidateSessions =
+    input.isActive === false || Boolean(input.password) || input.role !== undefined
+  if (mustInvalidateSessions) {
+    updateData.tokenVersion = sql`${userTable.tokenVersion} + 1` as any
   }
   updateData.updatedAt = new Date()
 
@@ -137,6 +148,10 @@ export async function updateUserService(id: string, input: UpdateUserInput, admi
       employeeId: userTable.employeeId,
       updatedAt:  userTable.updatedAt,
     })
+
+  if (mustInvalidateSessions) {
+    await revokeAllRefreshTokens(id)
+  }
 
   // Log activity
   await db.insert(activityLog).values({

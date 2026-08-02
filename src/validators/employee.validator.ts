@@ -28,7 +28,43 @@ export const createEmployeeSchema = z.object({
   isActive:             z.boolean().default(true),
 })
 
-export const updateEmployeeSchema = createEmployeeSchema.partial()
+/*
+ * `.partial()` hanya membuat field OPTIONAL, bukan NULLABLE. Frontend mengirim
+ * `null` eksplisit untuk field opsional yang dikosongkan (tanggalMasuk, gradeId,
+ * agama, nomorHp, alamat, dst.), sehingga simpan-edit selalu gagal 422 padahal
+ * kolomnya nullable di database dan jalur import memperbolehkan null.
+ */
+export const updateEmployeeSchema = createEmployeeSchema
+  .partial()
+  .extend({
+    nrk:                  z.string().trim().min(1).max(50).nullable().optional(),
+    nik:                  z.string().length(16, 'NIK harus 16 digit').nullable().optional(),
+    nama:                 z.string().trim().min(1).max(150).nullable().optional(),
+    jenisKelamin:         z.enum(['L', 'P']).nullable().optional(),
+    jabatan:              z.string().trim().min(1).max(150).nullable().optional(),
+    gradeId:              z.string().uuid().nullable().optional(),
+    tanggalMasuk:         z.string().date('Format tanggal masuk tidak valid').nullable().optional(),
+    tempatLahir:          z.string().max(100).nullable().optional(),
+    tanggalLahir:         z.string().date('Format tanggal lahir tidak valid').nullable().optional(),
+    statusKaryawanId:     z.string().uuid().nullable().optional(),
+    pendidikanTerakhirId: z.string().uuid().nullable().optional(),
+    statusPernikahanId:   z.string().uuid().nullable().optional(),
+    nomorHp:              z.string().max(20).nullable().optional(),
+    alamat:               z.string().nullable().optional(),
+    agama:                z.string().max(50).nullable().optional(),
+  })
+
+/*
+ * Password akun yang dibuat otomatis saat import.
+ * Diambil dari kolom `password` di Excel bila ada; bila kosong dipakai default
+ * IMPORT_DEFAULT_PASSWORD. Kebijakannya sama dengan pembuatan user manual supaya
+ * file Excel tidak bisa menyelundupkan password lemah.
+ */
+const importPasswordSchema = z
+  .string()
+  .min(8, 'Password minimal 8 karakter')
+  .regex(/[A-Z]/, 'Password harus mengandung huruf kapital')
+  .regex(/[0-9]/, 'Password harus mengandung angka')
 
 export const importEmployeeSchema = z.object({
   nrk:                  z.string().trim().min(1).max(50).nullable().optional(),
@@ -50,6 +86,8 @@ export const importEmployeeSchema = z.object({
   agama:                z.string().trim().max(50).nullable().optional(),
   // Jika email diisi, sistem otomatis membuat akun user (role user, password default).
   email:                z.string().email('Email tidak valid').nullable().optional(),
+  // Kolom `password` di Excel bersifat opsional; kosong → pakai default sistem.
+  password:             importPasswordSchema.nullable().optional(),
   isActive:             z.boolean().default(true),
 })
 

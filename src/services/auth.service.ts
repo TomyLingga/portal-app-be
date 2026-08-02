@@ -10,6 +10,7 @@ import { config }        from '../config/env'
 import { buildFileUrl }  from '../utils/file'
 import { generateTOTPSecret, verifyTOTP, verifyTOTPStep, getTOTPKeyURI } from '../utils/totp'
 import type { FastifyInstance } from 'fastify'
+import QRCode from 'qrcode'
 
 // ─── Helper: parse expiry string ke ms ────────────────────────────────────────
 function parseExpiry(str: string): number {
@@ -122,6 +123,14 @@ export async function refreshTokenService(fastify: FastifyInstance, rawToken: st
 
   if (!userData || !userData.isActive) throw new Error('Akun tidak aktif')
 
+  /*
+   * Catatan: tabel refresh_token tidak menyimpan tokenVersion, jadi kesegaran sesi
+   * ditegakkan dengan MENCABUT baris refresh token setiap kali kredensial atau role
+   * berubah (lihat revokeAllRefreshTokens di changePassword/resetPassword/
+   * updateUserService). Dengan begitu refresh token yang dicuri tidak bisa lagi
+   * memperpanjang sesi setelah password diganti.
+   */
+
   // Rotasi: revoke refresh token lama, buat yang baru
   await db
     .update(refreshTokenTable)
@@ -141,6 +150,15 @@ export async function refreshTokenService(fastify: FastifyInstance, rawToken: st
     refreshToken: newRefreshToken,
     expiresIn:    config.jwt.expiresIn,
   }
+}
+
+// ─── Pencabutan refresh token ─────────────────────────────────────────────────
+// Dipakai logout, ganti password, reset password, dan perubahan role oleh admin.
+export async function revokeAllRefreshTokens(userId: string) {
+  await db
+    .update(refreshTokenTable)
+    .set({ isRevoked: true })
+    .where(eq(refreshTokenTable.userId, userId))
 }
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
@@ -232,6 +250,10 @@ export async function changePasswordService(userId: string, currentPassword: str
     })
     .where(eq(userTable.id, userId))
 
+  // Menaikkan tokenVersion saja hanya mematikan access token (15 menit);
+  // refresh token 7 hari harus dicabut eksplisit agar sesi lain benar-benar mati.
+  await revokeAllRefreshTokens(userId)
+
   // Log activity
   try {
     await db.insert(activityLog).values({
@@ -318,11 +340,17 @@ export async function verifyTotpLoginService(
 export async function setupTotpService(userId: string) {
   const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
   if (!user) throw new Error('User tidak ditemukan')
-  if (user.role === 'super_admin') throw new Error('Dua-Factor Authentication (2FA) tidak diperbolehkan untuk Admin')
 
   const secret = generateTOTPSecret()
   const keyURI = getTOTPKeyURI(user.email, secret)
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(keyURI)}`
+  /*
+   * QR dibuat di server (paket `qrcode`, sudah ada di dependencies) dan dikirim
+   * sebagai data URL. Sebelumnya URL ke api.qrserver.com dikembalikan ke browser,
+   * artinya seed 2FA ikut terkirim — dan tercatat — di layanan pihak ketiga.
+   * Catatan: 2FA kini juga diizinkan untuk super_admin; akun paling berwenang
+   * seharusnya WAJIB punya faktor kedua, bukan dilarang memakainya.
+   */
+  const qrCodeUrl = await QRCode.toDataURL(keyURI, { width: 240, margin: 1 })
 
   return {
     secret,
@@ -333,7 +361,6 @@ export async function setupTotpService(userId: string) {
 export async function enableTotpService(userId: string, secret: string, code: string) {
   const [user] = await db.select().from(userTable).where(eq(userTable.id, userId)).limit(1)
   if (!user) throw new Error('User tidak ditemukan')
-  if (user.role === 'super_admin') throw new Error('Dua-Factor Authentication (2FA) tidak diperbolehkan untuk Admin')
 
   const valid = verifyTOTP(secret, code)
   if (!valid) throw new Error('Kode verifikasi salah atau kadaluwarsa')
@@ -468,6 +495,10 @@ export async function resetPasswordService(fastify: FastifyInstance, token: stri
       updatedAt: new Date()
     })
     .where(eq(userTable.id, user.id))
+
+  // Reset password dipakai justru ketika akun diduga dibajak — semua sesi lama
+  // (termasuk refresh token 7 hari milik penyerang) harus ikut mati.
+  await revokeAllRefreshTokens(user.id)
 
   return { message: 'Kata sandi berhasil diperbarui' }
 }

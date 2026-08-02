@@ -40,8 +40,15 @@ const fastify = Fastify({
   trustProxy: true,
 })
 
+/*
+ * Allowlist CORS TIDAK boleh disatukan dengan daftar origin WebAuthn.
+ * WEBAUTHN_EXPECTED_ORIGINS memuat seluruh aplikasi workspace (3000-3004);
+ * dengan credentials: true, satu XSS di aplikasi klien mana pun jadi bisa
+ * memanggil API portal memakai cookie korban dan membaca responsnya.
+ * WebAuthn tetap memakai daftarnya sendiri saat verifikasi assertion.
+ */
 const allowedOrigins = expandDevelopmentLoopbackOrigins(
-  [config.app.frontendUrl, ...config.webauthn.expectedOrigins],
+  [config.app.frontendUrl],
   config.app.nodeEnv,
 )
 

@@ -7,6 +7,7 @@ import {
   ssoToken,
   aplikasi,
   user as userTable,
+  appUserAccess,
   activityLog,
   employee,
   refGrade,
@@ -23,7 +24,14 @@ import { buildFileUrl } from '../utils/file'
 export async function generateSSOTokenService(userId: string, appId: string) {
   // Cek aplikasi ada & bertipe SSO
   const [app] = await db
-    .select({ id: aplikasi.id, authMode: aplikasi.authMode, url: aplikasi.url, nama: aplikasi.nama })
+    .select({
+      id: aplikasi.id,
+      authMode: aplikasi.authMode,
+      accessMode: aplikasi.accessMode,
+      targetUnitIds: aplikasi.targetUnitIds,
+      url: aplikasi.url,
+      nama: aplikasi.nama,
+    })
     .from(aplikasi)
     .where(and(eq(aplikasi.id, appId), eq(aplikasi.isActive, true)))
     .limit(1)
@@ -33,8 +41,14 @@ export async function generateSSOTokenService(userId: string, appId: string) {
 
   // Cek status user & employee link
   const [u] = await db
-    .select({ role: userTable.role, isActive: userTable.isActive, employeeId: userTable.employeeId })
+    .select({
+      role: userTable.role,
+      isActive: userTable.isActive,
+      employeeId: userTable.employeeId,
+      unitOrganisasiId: employee.unitOrganisasiId,
+    })
     .from(userTable)
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
     .where(eq(userTable.id, userId))
     .limit(1)
 
@@ -45,6 +59,43 @@ export async function generateSSOTokenService(userId: string, appId: string) {
   // SSO hanya untuk user yang terhubung ke data karyawan (employee)
   if (!u.employeeId) {
     throw new Error('Akses SSO hanya tersedia untuk akun yang terhubung ke data karyawan. Hubungi administrator untuk menghubungkan akun Anda.')
+  }
+
+  // Cek hak akses aplikasi per-user (super_admin bypass)
+  const isSuperAdmin = u.role?.split(',').includes('super_admin') ?? false
+  if (!isSuperAdmin) {
+    const mode = app.accessMode ?? 'all_employees'
+
+    if (mode === 'all_except') {
+      // Blacklist mode: Jika userId ADA di appUserAccess -> DITOLAK
+      const [excluded] = await db
+        .select({ id: appUserAccess.id })
+        .from(appUserAccess)
+        .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
+        .limit(1)
+
+      if (excluded) {
+        throw new Error(`Anda tidak diizinkan membuka aplikasi "${app.nama}". Hubungi administrator portal.`)
+      }
+    } else if (mode === 'specific_only') {
+      // Whitelist mode: Jika userId TIDAK ADA di appUserAccess -> DITOLAK
+      const [allowed] = await db
+        .select({ id: appUserAccess.id })
+        .from(appUserAccess)
+        .where(and(eq(appUserAccess.userId, userId), eq(appUserAccess.appId, appId)))
+        .limit(1)
+
+      if (!allowed) {
+        throw new Error(`Aplikasi "${app.nama}" hanya tersedia untuk pengguna khusus. Hubungi administrator portal.`)
+      }
+    } else if (mode === 'by_unit') {
+      // Unit mode: Jika unitOrganisasiId user tidak termasuk di targetUnitIds -> DITOLAK
+      const targetUnits = app.targetUnitIds ? app.targetUnitIds.split(',').map(s => s.trim()) : []
+      if (!u.unitOrganisasiId || !targetUnits.includes(u.unitOrganisasiId)) {
+        throw new Error(`Aplikasi "${app.nama}" hanya tersedia untuk unit kerja tertentu. Hubungi administrator portal.`)
+      }
+    }
+    // mode === 'all_employees' -> diizinkan selama user aktif memiliki employeeId
   }
 
   // Parse expiry (misal '5m' → 5 * 60000 ms)
@@ -84,24 +135,27 @@ export async function generateSSOTokenService(userId: string, appId: string) {
 export async function verifySSOTokenService(rawToken: string, appId: string) {
   const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
 
-  const [found] = await db
-    .select()
-    .from(ssoToken)
+  /*
+   * Klaim token secara ATOMIK: satu UPDATE ... RETURNING yang sekaligus menandai
+   * token terpakai. Sebelumnya SELECT dan UPDATE terpisah, sehingga dua permintaan
+   * /verify paralel dengan token yang sama bisa lolos berdua dan menghasilkan dua
+   * sesi dari satu tiket sekali-pakai (`sso_token.token_hash` juga tidak unique).
+   */
+  const claimedRows = await db
+    .update(ssoToken)
+    .set({ isRevoked: true })
     .where(and(
       eq(ssoToken.tokenHash, tokenHash),
       eq(ssoToken.appId, appId),
       eq(ssoToken.isRevoked, false),
     ))
-    .limit(1)
+    .returning()
+  const found = claimedRows[0]
 
   if (!found) throw new Error('Token tidak valid')
   if (found.expiresAt < new Date()) throw new Error('Token sudah expired')
 
-  // Revoke token (satu kali pakai)
-  await db
-    .update(ssoToken)
-    .set({ isRevoked: true })
-    .where(eq(ssoToken.id, found.id))
+  // Token sudah dicabut saat klaim di atas (atomik).
 
   // Ambil profil kerja employee. Data personal sensitif seperti NIK, alamat,
   // nomor HP, tanggal lahir, agama, dan status pernikahan tidak dikirim lewat SSO.

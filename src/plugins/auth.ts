@@ -30,6 +30,19 @@ export default fp(async function authPlugin(fastify: FastifyInstance) {
 
       // Cek tokenVersion: kalau user sudah logout, versi tidak cocok
       const payload = request.user
+
+      /*
+       * Token bertujuan khusus (reset password, pratinjau dokumen) ditandatangani
+       * dengan kunci yang sama dan berisi payload yang sama seperti access token.
+       * Tanpa penolakan eksplisit di sini, siapa pun yang melihat link reset di
+       * email bisa memakainya sebagai Bearer token untuk seluruh API.
+       */
+      const purpose = (payload as { purpose?: string }).purpose
+      if (purpose) {
+        fastify.log.warn(`[Auth] Token dengan purpose="${purpose}" ditolak untuk ${request.url}`)
+        return reply.code(401).send({ success: false, error: 'Token ini tidak berlaku untuk akses API' })
+      }
+
       const [dbUser] = await db
         .select({ tokenVersion: userTable.tokenVersion, isActive: userTable.isActive })
         .from(userTable)

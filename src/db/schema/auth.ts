@@ -15,6 +15,13 @@ export const roleEnum = pgEnum('role', ['user', 'super_admin'])
 // independent → punya login sendiri (tidak terintegrasi SSO)
 export const authModeEnum = pgEnum('auth_mode', ['sso', 'independent'])
 
+// Mode privasi akses aplikasi
+// all_employees → semua user yang terhubung ke karyawan aktif
+// all_except    → semua karyawan, KECUALI daftar user di app_user_access (blacklist)
+// specific_only → KHUSUS daftar user di app_user_access (whitelist)
+// by_unit       → khusus unit organisasi tertentu (target_unit_ids)
+export const accessModeEnum = pgEnum('access_mode', ['all_employees', 'all_except', 'specific_only', 'by_unit'])
+
 // ─── User ─────────────────────────────────────────────────────────────────────
 export const user = pgTable('user', {
   id:           uuid('id').primaryKey().$defaultFn(genUUID),
@@ -37,18 +44,20 @@ export const user = pgTable('user', {
 
 // ─── Aplikasi ─────────────────────────────────────────────────────────────────
 export const aplikasi = pgTable('aplikasi', {
-  id:        uuid('id').primaryKey().$defaultFn(genUUID),
-  nama:      varchar('nama',      { length: 150 }).notNull(),
-  url:       varchar('url',       { length: 500 }).notNull(),
-  authMode:  authModeEnum('auth_mode').notNull().default('independent'),
-  icon:      varchar('icon',      { length: 500 }),
-  deskripsi: text('deskripsi'),
-  urutan:    integer('urutan').notNull().default(0),
-  isActive:  boolean('is_active').notNull().default(true),
-  warna:     varchar('warna',     { length: 50 }).notNull().default('#3b82f6'),
-  kategori:  varchar('kategori',  { length: 100 }).notNull().default('Lainnya'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  id:            uuid('id').primaryKey().$defaultFn(genUUID),
+  nama:          varchar('nama',      { length: 150 }).notNull(),
+  url:           varchar('url',       { length: 500 }).notNull(),
+  authMode:      authModeEnum('auth_mode').notNull().default('independent'),
+  accessMode:    accessModeEnum('access_mode').notNull().default('all_employees'),
+  targetUnitIds: text('target_unit_ids'),
+  icon:          varchar('icon',      { length: 500 }),
+  deskripsi:     text('deskripsi'),
+  urutan:        integer('urutan').notNull().default(0),
+  isActive:      boolean('is_active').notNull().default(true),
+  warna:         varchar('warna',     { length: 50 }).notNull().default('#3b82f6'),
+  kategori:      varchar('kategori',  { length: 100 }).notNull().default('Lainnya'),
+  createdAt:     timestamp('created_at').notNull().defaultNow(),
+  updatedAt:     timestamp('updated_at').notNull().defaultNow(),
 })
 
 // ─── App User Access ──────────────────────────────────────────────────────────

@@ -35,12 +35,45 @@ export function checkDomainStatus(host: string): Promise<{ status: 'online' | 'o
  * measuring response latency. Used to monitor the actual connected SSO applications
  * (registered in the `aplikasi` table), not just the portal's own infrastructure.
  */
-export async function checkAppStatus(url: string, timeoutMs = 4000): Promise<{ status: 'online' | 'offline'; latency: number }> {
+/*
+ * Guard SSRF: `url` berasal dari tabel `aplikasi` yang hanya divalidasi `z.url()`.
+ * Tanpa penyaringan, admin (atau token admin yang dicuri) bisa mendaftarkan URL ke
+ * 169.254.169.254 / localhost / IP privat, lalu memakai endpoint health sebagai
+ * port scanner & pembaca metadata cloud dari posisi jaringan backend.
+ */
+const BLOCKED_HOST_PATTERNS = [
+  /^localhost$/i,
+  /^127\./,
+  /^0\./,
+  /^10\./,
+  /^169\.254\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^192\.168\./,
+  /^\[?::1\]?$/,
+  /^\[?fc[0-9a-f]{2}:/i,
+  /^\[?fe80:/i,
+]
+
+export function isProbeTargetAllowed(rawUrl: string) {
+  try {
+    const parsed = new URL(rawUrl)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+    return !BLOCKED_HOST_PATTERNS.some((pattern) => pattern.test(parsed.hostname))
+  } catch {
+    return false
+  }
+}
+
+export async function checkAppStatus(url: string, timeoutMs = 4000): Promise<{ status: 'online' | 'offline' | 'unknown'; latency: number }> {
+  if (!isProbeTargetAllowed(url)) {
+    return { status: 'unknown', latency: 0 }
+  }
+
   const start = Date.now()
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const res = await fetch(url, { signal: controller.signal, method: 'GET' })
+    const res = await fetch(url, { signal: controller.signal, method: 'GET', redirect: 'manual' })
     const latency = Date.now() - start
     return { status: res.status < 500 ? 'online' : 'offline', latency }
   } catch {

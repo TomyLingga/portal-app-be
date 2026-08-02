@@ -8,7 +8,7 @@ import { hashPassword }                    from '../utils/hash'
 import type { CreateEmployeeInput, UpdateEmployeeInput, ImportEmployeeInput, ListEmployeeQuery } from '../validators/employee.validator'
 
 // Password default untuk akun yang dibuat otomatis saat import employee.
-const IMPORT_DEFAULT_PASSWORD = 'User@123'
+export const IMPORT_DEFAULT_PASSWORD = 'User@123'
 
 function withFileUrl(row: any) {
   return {
@@ -232,7 +232,7 @@ export async function importEmployeeService(input: ImportEmployeeInput, userId: 
       parentId = unit.id
     }
 
-    const { unitPath, email, ...employeeInput } = input
+    const { unitPath, email, password, ...employeeInput } = input
     const [created] = await tx.insert(employee).values({
       ...employeeInput,
       nrk: employeeInput.nrk ?? null,
@@ -260,12 +260,19 @@ export async function importEmployeeService(input: ImportEmployeeInput, userId: 
       details: `Mengimport karyawan: ${created.nama ?? '(tanpa nama)'} (NRK: ${created.nrk ?? '-'}), Unit: ${unitPath.map((item) => item.nama).join(' > ')}`,
     })
 
-    // Buat akun user otomatis bila email tersedia dan belum terpakai.
-    let createdUser: { id: string; email: string } | null = null
+    /*
+     * Buat akun user otomatis bila email tersedia dan belum terpakai.
+     * Password diambil dari kolom `password` di Excel; bila kolomnya tidak ada
+     * atau kosong, dipakai IMPORT_DEFAULT_PASSWORD. Validasi kekuatan password
+     * sudah dilakukan di importEmployeeSchema.
+     */
+    let createdUser: { id: string; email: string; usedDefaultPassword: boolean } | null = null
     if (email) {
       const [existingUser] = await tx.select({ id: user.id }).from(user).where(eq(user.email, email)).limit(1)
       if (!existingUser) {
-        const passwordHash = await hashPassword(IMPORT_DEFAULT_PASSWORD)
+        const plainPassword = password?.trim() ? password.trim() : IMPORT_DEFAULT_PASSWORD
+        const usedDefaultPassword = plainPassword === IMPORT_DEFAULT_PASSWORD
+        const passwordHash = await hashPassword(plainPassword)
         const [newUser] = await tx.insert(user).values({
           email,
           passwordHash,
@@ -273,11 +280,11 @@ export async function importEmployeeService(input: ImportEmployeeInput, userId: 
           isActive: true,
           employeeId: created.id,
         }).returning({ id: user.id, email: user.email })
-        createdUser = newUser
+        createdUser = { ...newUser, usedDefaultPassword }
         await tx.insert(activityLog).values({
           userId,
           action: 'import_user',
-          details: `Membuat akun user dari import employee: ${newUser.email} (password default)`,
+          details: `Membuat akun user dari import employee: ${newUser.email} (${usedDefaultPassword ? 'password default' : 'password dari file Excel'})`,
         })
       }
     }

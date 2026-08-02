@@ -116,8 +116,14 @@ export async function generatePasskeyLoginOptionsService(fastify: FastifyInstanc
       .where(eq(userTable.email, email.trim()))
       .limit(1)
 
+    /*
+     * Pesan disamakan: tiga keadaan berbeda (email tidak ada / belum punya passkey /
+     * ada) dulu bisa dibedakan oleh pemanggil, sehingga endpoint ini jadi alat
+     * enumerasi akun yang bisa dipakai tanpa login.
+     */
+    const GENERIC_PASSKEY_ERROR = 'Tidak ada passkey yang cocok untuk email tersebut'
     if (!user) {
-      throw new Error('User dengan email tersebut tidak ditemukan')
+      throw new Error(GENERIC_PASSKEY_ERROR)
     }
 
     const userPasskeys = await db
@@ -126,7 +132,7 @@ export async function generatePasskeyLoginOptionsService(fastify: FastifyInstanc
       .where(eq(userPasskey.userId, user.id))
 
     if (userPasskeys.length === 0) {
-      throw new Error('Email ini belum mendaftarkan Passkey')
+      throw new Error(GENERIC_PASSKEY_ERROR)
     }
 
     allowCredentials = userPasskeys.map(p => ({

@@ -36,16 +36,38 @@ export async function getDocumentActorContext(userId: string, requireEmployee = 
 }
 
 export async function checkDocumentRuleAccess(employeeId: string, documentId: string, accessType: DocumentAccessType) {
-  const [doc] = await db.select({ uploadedBy: documents.uploadedBy }).from(documents).where(eq(documents.id, documentId)).limit(1)
+  const [doc] = await db.select({ uploadedBy: documents.uploadedBy, categoryId: documents.categoryId })
+    .from(documents).where(eq(documents.id, documentId)).limit(1)
   if (doc?.uploadedBy === employeeId) {
     return true
   }
 
+  /*
+   * FAIL-CLOSED.
+   *
+   * Dulu: jumlah rule dihitung HANYA untuk `document_id` + `access_type`; bila nol
+   * fungsi mengembalikan `true`. Akibatnya (a) dokumen yang diunggah tanpa
+   * `targetUnitIds` sama sekali tidak punya rule sehingga terbuka untuk semua
+   * karyawan, dan (b) karena tidak ada jalur kode yang pernah membuat rule
+   * bertipe `edit`, pemeriksaan hak edit/hapus SELALU lolos.
+   *
+   * Sekarang: rule tingkat kategori ikut dihitung, dan bila memang tidak ada rule
+   * yang berlaku maka akses DITOLAK. Pemilik dokumen dan super_admin tetap punya
+   * jalur sendiri (pemilik di atas, super_admin diperiksa di pemanggil).
+   */
   const [ruleCountRow] = await db.select({ count: count() })
     .from(documentAccessRules)
-    .where(and(eq(documentAccessRules.documentId, documentId), eq(documentAccessRules.accessType, accessType)))
+    .where(and(
+      eq(documentAccessRules.accessType, accessType),
+      doc?.categoryId
+        ? or(
+            eq(documentAccessRules.documentId, documentId),
+            eq(documentAccessRules.documentCategoryId, doc.categoryId),
+          )
+        : eq(documentAccessRules.documentId, documentId),
+    ))
   if (!ruleCountRow || Number(ruleCountRow.count) === 0) {
-    return true
+    return false
   }
 
   const result = await db.execute<{ allowed: boolean }>(sql`
