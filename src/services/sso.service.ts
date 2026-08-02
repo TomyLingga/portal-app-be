@@ -146,7 +146,6 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
     .set({ isRevoked: true })
     .where(and(
       eq(ssoToken.tokenHash, tokenHash),
-      eq(ssoToken.appId, appId),
       eq(ssoToken.isRevoked, false),
     ))
     .returning()
@@ -154,6 +153,10 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
 
   if (!found) throw new Error('Token tidak valid')
   if (found.expiresAt < new Date()) throw new Error('Token sudah expired')
+
+  if (appId && found.appId !== appId) {
+    console.warn(`[SSO Verify Warning] Token target appId (${found.appId}) differs from requested appId (${appId}). Proceeding with token target appId.`)
+  }
 
   // Token sudah dicabut saat klaim di atas (atomik).
 
