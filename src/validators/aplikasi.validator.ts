@@ -13,7 +13,17 @@ export const createAplikasiSchema = z.object({
   kategori:  z.string().max(100).optional().default('Lainnya'),
 })
 
-export const updateAplikasiSchema = createAplikasiSchema.partial()
+export const updateAplikasiSchema = z.object({
+  nama:      z.string().min(1).max(150).optional(),
+  url:       z.string().url('URL tidak valid').max(500).optional(),
+  authMode:  z.enum(['sso', 'independent']).optional(),
+  icon:      z.string().max(500).optional().nullable(),
+  deskripsi: z.string().optional().nullable(),
+  urutan:    z.number().int().min(0).optional(),
+  isActive:  z.boolean().optional(),
+  warna:     z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Warna harus dalam format hex, misalnya #D97706.').optional(),
+  kategori:  z.string().max(100).optional(),
+})
 
 export const listAplikasiQuerySchema = z.object({
   page:     z.coerce.number().int().min(1).default(1),
