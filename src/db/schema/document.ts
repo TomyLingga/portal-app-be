@@ -164,6 +164,30 @@ export const documentVersions = pgTable('document_versions', {
   uniqueIndex('document_versions_doc_ver_uidx').on(table.documentId, table.version),
 ])
 
+/**
+ * Global Document Viewers — unit organisasi atau karyawan individu yang mendapat
+ * akses view-only ke SEMUA dokumen aktif di seluruh organisasi.
+ *
+ * Contoh kasus: Unit Auditor Internal wajib bisa melihat semua dokumen.
+ * Bisa juga per-karyawan (misalnya komisaris independen).
+ *
+ * Constraint: hanya salah satu yang boleh terisi (unit ATAU employee), tidak boleh keduanya.
+ */
+export const documentGlobalViewers = pgTable('document_global_viewers', {
+  id: uuid('id').primaryKey().$defaultFn(genUUID),
+  unitOrganisasiId: uuid('unit_organisasi_id').references(() => unitOrganisasi.id, { onDelete: 'cascade' }),
+  employeeId: uuid('employee_id').references(() => employee.id, { onDelete: 'cascade' }),
+  includeDescendants: boolean('include_descendants').notNull().default(true),
+  notes: varchar('notes', { length: 300 }),
+  createdBy: uuid('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, table => [
+  check('document_global_viewers_target_check', sql`${table.unitOrganisasiId} IS NOT NULL OR ${table.employeeId} IS NOT NULL`),
+  check('document_global_viewers_exclusive_check', sql`NOT (${table.unitOrganisasiId} IS NOT NULL AND ${table.employeeId} IS NOT NULL)`),
+  index('document_global_viewers_unit_idx').on(table.unitOrganisasiId),
+  index('document_global_viewers_employee_idx').on(table.employeeId),
+])
+
 export const documentCategoryRelations = relations(documentCategories, ({ many }) => ({
   documents: many(documents),
   accessRules: many(documentAccessRules),
@@ -202,3 +226,9 @@ export const documentAuditLogRelations = relations(documentAuditLog, ({ one }) =
   document: one(documents, { fields: [documentAuditLog.documentId], references: [documents.id] }),
   employee: one(employee, { fields: [documentAuditLog.employeeId], references: [employee.id] }),
 }))
+
+export const documentGlobalViewerRelations = relations(documentGlobalViewers, ({ one }) => ({
+  unit: one(unitOrganisasi, { fields: [documentGlobalViewers.unitOrganisasiId], references: [unitOrganisasi.id] }),
+  employee: one(employee, { fields: [documentGlobalViewers.employeeId], references: [employee.id] }),
+}))
+

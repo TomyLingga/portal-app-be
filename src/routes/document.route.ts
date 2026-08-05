@@ -8,6 +8,7 @@ import {
   createDocumentApproverSchema,
   createDocumentCategorySchema,
   createDocumentSchema,
+  createGlobalViewerSchema,
   documentTreeQuerySchema,
   downloadRequestSchema,
   listAccessRulesQuerySchema,
@@ -54,6 +55,11 @@ import {
 } from '../services/document-download.service'
 import { listDocumentAuditService } from '../services/document-audit.service'
 import { listApproverHierarchyService } from '../services/document-access.service'
+import {
+  addGlobalViewerService,
+  listGlobalViewersService,
+  removeGlobalViewerService,
+} from '../services/global-viewer.service'
 import {
   deleteDocumentFile,
   documentDownloadName,
@@ -211,6 +217,21 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     const { id } = idParamsSchema.parse(request.params)
     await deleteAccessRuleService(id)
     return reply.code(204).send()
+  })
+
+  // ─── Global Viewers Management ─────────────────────────────────────────
+  fastify.get('/global-viewers', { preHandler: adminOnly }, async (request, reply) => {
+    return reply.send(ok(await listGlobalViewersService()))
+  })
+
+  fastify.post('/global-viewers', { preHandler: adminOnly }, async (request, reply) => {
+    const body = createGlobalViewerSchema.parse(request.body)
+    return reply.code(201).send(ok(await addGlobalViewerService(body, request.user.sub)))
+  })
+
+  fastify.delete('/global-viewers/:id', { preHandler: adminOnly }, async (request, reply) => {
+    const { id } = idParamsSchema.parse(request.params)
+    return reply.send(ok(await removeGlobalViewerService(id)))
   })
 
   // ─── Approver Hierarchy (read-only, org-hierarchy-based) ───────────────────

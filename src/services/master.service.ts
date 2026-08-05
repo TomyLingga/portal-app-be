@@ -4,16 +4,41 @@ import { user as userTable, aplikasi, activityLog, employee } from '../db/schema
 import { eq, and, gte, lte, desc, or, ilike, count } from 'drizzle-orm'
 
 export async function getMasterStatsService(currentYear: number, currentMonth: number) {
-  // 1. Counts
+  // 1. User Account Counts
   const allUsers = await db.select().from(userTable)
   const allApps = await db.select().from(aplikasi).where(eq(aplikasi.isActive, true))
 
   const appsCount = allApps.length
   const usersCount = allUsers.length
-  const activeCount = allUsers.filter(u => u.isActive).length
+  const activeAccountsCount = allUsers.filter(u => u.isActive).length
   const suspendedCount = allUsers.filter(u => !u.isActive).length
 
-  // 2. Daily logs (SSO Token activities)
+  // 2. Real Login & Online User Calculation based on activity_log
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000)
+
+  const todayLogs = await db
+    .select({
+      userId: activityLog.userId,
+      createdAt: activityLog.createdAt,
+    })
+    .from(activityLog)
+    .where(and(
+      gte(activityLog.createdAt, startOfToday),
+      lte(activityLog.createdAt, endOfToday)
+    ))
+
+  const todayUserIds = new Set(todayLogs.map(l => l.userId))
+  const loginTodayCount = todayUserIds.size
+
+  const onlineUserIds = new Set(
+    todayLogs.filter(l => l.createdAt >= fifteenMinsAgo).map(l => l.userId)
+  )
+  const onlineNowCount = onlineUserIds.size
+
+  // 3. Daily logs (SSO Token activities)
   const startDate = new Date(currentYear, currentMonth - 1, 1)
   const endDate = new Date(currentYear, currentMonth, 1)
 
@@ -119,7 +144,10 @@ export async function getMasterStatsService(currentYear: number, currentMonth: n
   return {
     appsCount,
     usersCount,
-    activeCount,
+    activeCount: loginTodayCount,
+    activeAccountsCount,
+    loginTodayCount,
+    onlineNowCount,
     suspendedCount,
     dailyLogs,
     appsList,

@@ -10,6 +10,7 @@ import {
   user,
 } from '../db/schema'
 import { httpError } from '../utils/httpError'
+import { isGlobalViewer } from './global-viewer.service'
 
 export type DocumentAccessType = 'view' | 'edit' | 'approve'
 
@@ -39,6 +40,11 @@ export async function checkDocumentRuleAccess(employeeId: string, documentId: st
   const [doc] = await db.select({ uploadedBy: documents.uploadedBy, categoryId: documents.categoryId })
     .from(documents).where(eq(documents.id, documentId)).limit(1)
   if (doc?.uploadedBy === employeeId) {
+    return true
+  }
+
+  // Global viewer bypass: jika karyawan adalah global viewer, akses view otomatis diberikan
+  if (accessType === 'view' && await isGlobalViewer(employeeId)) {
     return true
   }
 
@@ -85,9 +91,17 @@ export async function checkDocumentRuleAccess(employeeId: string, documentId: st
       FROM unit_organisasi parent
       JOIN employee_ancestors child ON child.parent_id = parent.id
     ), document_context AS (
-      SELECT d.id, d.category_id
+      SELECT d.id, d.category_id, d.owner_unit_id
       FROM documents d
       WHERE d.id = ${documentId}::uuid AND d.is_active = true
+    ), doc_owner_ancestors AS (
+      SELECT u.id, u.parent_id
+      FROM unit_organisasi u
+      JOIN document_context dc ON dc.owner_unit_id = u.id
+      UNION ALL
+      SELECT parent.id, parent.parent_id
+      FROM unit_organisasi parent
+      JOIN doc_owner_ancestors child ON child.parent_id = parent.id
     )
     SELECT EXISTS (
       SELECT 1
@@ -103,6 +117,10 @@ export async function checkDocumentRuleAccess(employeeId: string, documentId: st
           OR (
             rule.include_descendants = true
             AND EXISTS (SELECT 1 FROM employee_ancestors a WHERE a.id = rule.unit_organisasi_id)
+          )
+          OR (
+            dc.owner_unit_id IS NOT NULL
+            AND EXISTS (SELECT 1 FROM doc_owner_ancestors doa WHERE doa.id = ec.unit_organisasi_id)
           )
         )
     ) AS allowed

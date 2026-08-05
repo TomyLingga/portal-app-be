@@ -31,6 +31,7 @@ import {
   getDocumentActorContext,
 } from './document-access.service'
 import { logDocumentAction } from './document-audit.service'
+import { isGlobalViewer } from './global-viewer.service'
 
 export interface DocumentTreeDocument {
   id: string
@@ -178,35 +179,66 @@ function documentFilters(
 }
 
 function documentViewAccessFilter(employeeId: string) {
-  return sql`EXISTS (
-    WITH RECURSIVE employee_context AS (
-      SELECT e.unit_organisasi_id, g.level AS grade_level
-      FROM employee e
-      LEFT JOIN ref_grade g ON g.id = e.grade_id
-      WHERE e.id = ${employeeId}::uuid AND e.is_active = true
-    ), employee_ancestors AS (
-      SELECT u.id, u.parent_id
-      FROM unit_organisasi u
-      JOIN employee_context ec ON ec.unit_organisasi_id = u.id
-      UNION ALL
-      SELECT parent.id, parent.parent_id
-      FROM unit_organisasi parent
-      JOIN employee_ancestors child ON child.parent_id = parent.id
-    )
-    SELECT 1
-    FROM document_access_rules rule
-    CROSS JOIN employee_context ec
-    WHERE rule.access_type = 'view'::document_access_type
-      AND (rule.document_id = ${documents.id} OR rule.document_category_id = ${documents.categoryId})
-      AND (rule.min_grade_level IS NULL OR ec.grade_level >= rule.min_grade_level)
-      AND (
-        rule.unit_organisasi_id IS NULL
-        OR rule.unit_organisasi_id = ec.unit_organisasi_id
-        OR (
-          rule.include_descendants = true
-          AND EXISTS (SELECT 1 FROM employee_ancestors a WHERE a.id = rule.unit_organisasi_id)
-        )
+  return sql`(
+    -- Global viewer bypass: karyawan atau unit yang di-set sebagai global viewer
+    EXISTS (
+      WITH RECURSIVE gv_employee_unit AS (
+        SELECT e.unit_organisasi_id FROM employee e WHERE e.id = ${employeeId}::uuid AND e.is_active = true
+      ), gv_unit_ancestors AS (
+        SELECT u.id, u.parent_id FROM unit_organisasi u JOIN gv_employee_unit eu ON eu.unit_organisasi_id = u.id
+        UNION ALL
+        SELECT parent.id, parent.parent_id FROM unit_organisasi parent JOIN gv_unit_ancestors child ON child.parent_id = parent.id
       )
+      SELECT 1 FROM document_global_viewers gv WHERE
+        gv.employee_id = ${employeeId}::uuid
+        OR (gv.unit_organisasi_id IS NOT NULL AND gv.unit_organisasi_id = (SELECT unit_organisasi_id FROM gv_employee_unit))
+        OR (gv.unit_organisasi_id IS NOT NULL AND gv.include_descendants = true AND gv.unit_organisasi_id IN (SELECT id FROM gv_unit_ancestors))
+    )
+    OR
+    -- Standard per-document/per-category access rules + Hierarchy inheritance (atasan & bawahan)
+    EXISTS (
+      WITH RECURSIVE employee_context AS (
+        SELECT e.unit_organisasi_id, g.level AS grade_level
+        FROM employee e
+        LEFT JOIN ref_grade g ON g.id = e.grade_id
+        WHERE e.id = ${employeeId}::uuid AND e.is_active = true
+      ), employee_ancestors AS (
+        SELECT u.id, u.parent_id
+        FROM unit_organisasi u
+        JOIN employee_context ec ON ec.unit_organisasi_id = u.id
+        UNION ALL
+        SELECT parent.id, parent.parent_id
+        FROM unit_organisasi parent
+        JOIN employee_ancestors child ON child.parent_id = parent.id
+      ), doc_owner_ancestors AS (
+        SELECT u.id, u.parent_id
+        FROM unit_organisasi u
+        WHERE u.id = ${documents.ownerUnitId}
+        UNION ALL
+        SELECT parent.id, parent.parent_id
+        FROM unit_organisasi parent
+        JOIN doc_owner_ancestors child ON child.parent_id = parent.id
+      )
+      SELECT 1
+      FROM document_access_rules rule
+      CROSS JOIN employee_context ec
+      WHERE rule.access_type = 'view'::document_access_type
+        AND (rule.document_id = ${documents.id} OR rule.document_category_id = ${documents.categoryId})
+        AND (rule.min_grade_level IS NULL OR ec.grade_level >= rule.min_grade_level)
+        AND (
+          rule.unit_organisasi_id IS NULL
+          OR rule.unit_organisasi_id = ec.unit_organisasi_id
+          OR (
+            rule.include_descendants = true
+            AND EXISTS (SELECT 1 FROM employee_ancestors a WHERE a.id = rule.unit_organisasi_id)
+          )
+          OR (
+            -- Atasan / Superior unit: Kabag di unit induk dapat melihat dokumen di unit bawahannya
+            ${documents.ownerUnitId} IS NOT NULL
+            AND EXISTS (SELECT 1 FROM doc_owner_ancestors doa WHERE doa.id = ec.unit_organisasi_id)
+          )
+        )
+    )
   )`
 }
 
@@ -261,6 +293,8 @@ export async function getDocumentTreeService(userId: string, query: DocumentTree
   const manageScope = query.scope === 'manage' && actor.role === 'super_admin'
   if (query.scope === 'manage' && !manageScope) throw httpError(403, 'Hanya administrator yang dapat melihat seluruh dokumen')
 
+  const isGlobal = actor.employeeId ? await isGlobalViewer(actor.employeeId) : false
+
   const conditions = documentFilters(query, manageScope)
   if (!manageScope) conditions.push(documentViewAccessFilter(actor.employeeId!))
   const where = conditions.length ? and(...conditions) : undefined
@@ -314,7 +348,7 @@ export async function getDocumentTreeService(userId: string, query: DocumentTree
   }
 
   const visibleUnitIds = new Set<string>()
-  const showCompleteHierarchy = manageScope && !query.search && !query.categoryId && query.isActive === undefined
+  const showCompleteHierarchy = (manageScope || isGlobal) && !query.search && !query.categoryId && query.isActive === undefined
   if (showCompleteHierarchy) {
     for (const unit of units) visibleUnitIds.add(unit.id)
   } else {

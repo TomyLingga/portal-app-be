@@ -133,15 +133,27 @@ export const listDocumentAuditQuerySchema = z.object({
   endDate: z.string().date().optional(),
 })
 
+export const createGlobalViewerSchema = z.object({
+  unitOrganisasiId: z.string().uuid().nullable().optional(),
+  employeeId: z.string().uuid().nullable().optional(),
+  includeDescendants: z.coerce.boolean().optional().default(true),
+  notes: z.string().trim().max(300).nullable().optional(),
+}).refine(
+  data => (data.unitOrganisasiId && !data.employeeId) || (!data.unitOrganisasiId && data.employeeId),
+  { message: 'Harus memilih salah satu: unit organisasi atau karyawan' }
+)
+
 export type CreateDocumentCategoryInput = z.infer<typeof createDocumentCategorySchema>
 export type UpdateDocumentCategoryInput = z.infer<typeof updateDocumentCategorySchema>
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>
 export type UpdateDocumentInput = z.infer<typeof updateDocumentSchema>
 export type CreateAccessRuleInput = z.infer<typeof createAccessRuleSchema>
 export type CreateDocumentApproverInput = z.infer<typeof createDocumentApproverSchema>
+export type CreateGlobalViewerInput = z.infer<typeof createGlobalViewerSchema>
 export type ListDocumentsQuery = z.infer<typeof listDocumentsQuerySchema>
 export type DocumentTreeQuery = z.infer<typeof documentTreeQuerySchema>
 export type ListAccessRulesQuery = z.infer<typeof listAccessRulesQuerySchema>
 export type ListApproversQuery = z.infer<typeof listApproversQuerySchema>
 export type ListDownloadRequestsQuery = z.infer<typeof listDownloadRequestsQuerySchema>
 export type ListDocumentAuditQuery = z.infer<typeof listDocumentAuditQuerySchema>
+
