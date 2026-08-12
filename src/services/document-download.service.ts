@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { and, count, desc, eq, gt, isNull, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gt, isNull, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db'
 import {
@@ -167,7 +167,6 @@ export async function decideDocumentDownloadService(
   requestId: string,
   action: 'approve' | 'reject',
   rejectionReason?: string | null,
-  validityDays?: number,
 ) {
   const actor = await getDocumentActorContext(userId)
   const requester = alias(employee, 'document_requester_employee')
@@ -189,9 +188,7 @@ export async function decideDocumentDownloadService(
   }
   if (action === 'reject' && !rejectionReason) throw httpError(422, 'Alasan penolakan wajib diisi')
 
-  const days = Math.min(365, Math.max(1, Number(validityDays) || 7))
   const token = action === 'approve' ? crypto.randomUUID() : null
-  const expiresAt = action === 'approve' ? new Date(Date.now() + (days * 24 * 60 * 60 * 1000)) : null
   const updated = await db.transaction(async tx => {
     const [row] = await tx.update(documentDownloadRequests).set({
       status: action === 'approve' ? 'approved' : 'rejected',
@@ -199,7 +196,7 @@ export async function decideDocumentDownloadService(
       approvedAt: action === 'approve' ? new Date() : null,
       rejectionReason: action === 'reject' ? rejectionReason : null,
       downloadToken: token,
-      tokenExpiresAt: expiresAt,
+      tokenExpiresAt: null,
       updatedAt: new Date(),
     }).where(and(
       eq(documentDownloadRequests.id, requestId),
@@ -211,19 +208,18 @@ export async function decideDocumentDownloadService(
         documentId: requestRow.documentId,
         employeeId: actor.employeeId,
         action: action === 'approve' ? 'download_approved' : 'download_rejected',
-        metadata: { requestId, rejectionReason: action === 'reject' ? rejectionReason : null, validityDays: days },
+        metadata: { requestId, rejectionReason: action === 'reject' ? rejectionReason : null },
       }, tx)
     }
     return row
   })
 
   try {
-    const formattedDate = expiresAt ? expiresAt.toLocaleDateString('id-ID', { dateStyle: 'medium' }) : ''
     await notifyEmployees([requestRow.requestedBy], {
       type: action === 'approve' ? 'document_download_approved' : 'document_download_rejected',
       title: action === 'approve' ? 'Download dokumen disetujui' : 'Download dokumen ditolak',
       message: action === 'approve'
-        ? `Permintaan download "${requestRow.documentTitle}" disetujui. Akses unduh berlaku ${days} hari (hingga ${formattedDate}).`
+        ? `Permintaan download "${requestRow.documentTitle}" disetujui (1x unduh).`
         : `Permintaan download "${requestRow.documentTitle}" ditolak: ${rejectionReason}`,
       entityType: 'document_download_request',
       entityId: requestId,
@@ -268,11 +264,11 @@ export async function listMyDownloadRequestsService(userId: string, query: ListD
 
   const now = new Date()
   const processedRows = rows.map(r => {
-    const isExpired = r.status === 'approved' && r.tokenExpiresAt && new Date(r.tokenExpiresAt) <= now
+    const isConsumedOrExpired = r.status === 'approved' && (Boolean(r.downloadedAt) || (r.tokenExpiresAt && new Date(r.tokenExpiresAt) <= now))
     return {
       ...r,
-      status: isExpired ? 'expired' : r.status,
-      downloadToken: isExpired ? null : r.downloadToken,
+      status: isConsumedOrExpired ? (r.downloadedAt ? 'used' : 'expired') : r.status,
+      downloadToken: isConsumedOrExpired ? null : r.downloadToken,
     }
   })
 
@@ -353,8 +349,8 @@ export async function claimDocumentDownloadTokenService(token: string, metadata?
     }).where(and(
       eq(documentDownloadRequests.downloadToken, token),
       eq(documentDownloadRequests.status, 'approved'),
-      gt(documentDownloadRequests.tokenExpiresAt, now),
       isNull(documentDownloadRequests.downloadedAt),
+      or(isNull(documentDownloadRequests.tokenExpiresAt), gt(documentDownloadRequests.tokenExpiresAt, now)),
     )).returning()
     if (!requestRow) return null
     const [document] = await tx.select({

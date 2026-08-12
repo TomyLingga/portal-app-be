@@ -307,7 +307,7 @@ export default async function documentRoutes(fastify: FastifyInstance) {
   fastify.post('/download-requests/:id/approve', { preHandler: adminOnly }, async (request, reply) => {
     const { id } = idParamsSchema.parse(request.params)
     const input = approveRejectRequestSchema.parse({ ...(request.body as object || {}), action: 'approve' })
-    return reply.send(ok(await decideDocumentDownloadService(request.user.sub, id, input.action, input.rejectionReason, input.validityDays)))
+    return reply.send(ok(await decideDocumentDownloadService(request.user.sub, id, input.action, input.rejectionReason)))
   })
 
   fastify.post('/download-requests/:id/reject', { preHandler: adminOnly }, async (request, reply) => {

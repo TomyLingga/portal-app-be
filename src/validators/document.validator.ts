@@ -72,7 +72,7 @@ export const downloadRequestSchema = z.object({
 export const approveRejectRequestSchema = z.object({
   action: z.enum(['approve', 'reject']),
   rejectionReason: z.string().trim().max(2000).nullable().optional(),
-  validityDays: z.coerce.number().int().min(1).max(365).optional().default(7),
+  validityDays: z.coerce.number().int().min(1).max(365).optional(),
 }).superRefine((data, ctx) => {
   if (data.action === 'reject' && !data.rejectionReason) {
     ctx.addIssue({
