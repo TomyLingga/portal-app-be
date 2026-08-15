@@ -138,18 +138,23 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
     // Load INL Logo image for center diagonal watermark and top header
     let logoImage: any = null
     try {
+      const APP_ROOT = path.resolve(__dirname, '..', '..')
       const possibleLogoPaths = [
+        path.resolve(APP_ROOT, 'assets/logo.png'),
+        path.resolve(APP_ROOT, 'public/img/logo.png'),
+        path.resolve(process.cwd(), 'assets/logo.png'),
+        path.resolve(process.cwd(), 'public/img/logo.png'),
+        path.resolve(APP_ROOT, '../portal-fe/public/img/logo.png'),
         path.resolve(process.cwd(), '../portal-fe/public/img/logo.png'),
-        path.resolve(process.cwd(), './public/img/logo.png'),
-        path.resolve(__dirname, '../../../../portal-fe/public/img/logo.png'),
-        'd:/SMKAW02PDN/Laporan PKL/Project/SSO/portal-fe/public/img/logo.png',
       ]
       let logoBuffer: Buffer | null = null
       for (const logoPath of possibleLogoPaths) {
-        if (fs.existsSync(logoPath)) {
-          logoBuffer = fs.readFileSync(logoPath)
-          break
-        }
+        try {
+          if (fs.existsSync(logoPath) && fs.statSync(logoPath).isFile()) {
+            logoBuffer = fs.readFileSync(logoPath)
+            break
+          }
+        } catch {}
       }
       if (logoBuffer) {
         logoImage = await pdfDoc.embedPng(logoBuffer)
@@ -197,7 +202,7 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
 
       // Center Diagonal INL Logo Watermark (Subtle opacity, rotated 30 deg - perfectly centered)
       if (logoImage) {
-        const logoWidth = Math.min(width, height) * 0.68
+        const logoWidth = Math.min(width, height) * 0.46
         const logoScale = logoWidth / logoImage.width
         const logoHeight = logoImage.height * logoScale
 
@@ -218,12 +223,12 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
           y: logoY,
           width: logoWidth,
           height: logoHeight,
-          opacity: 0.12,
+          opacity: 0.11,
           rotate: degrees(angleDeg),
         })
       } else {
         const diagonalText = `PT INDUSTRI NABATI LESTARI`
-        const fontSizeCenter = Math.min(width, height) / 15
+        const fontSizeCenter = Math.min(width, height) / 16
         const textWidthCenter = font.widthOfTextAtSize(diagonalText, fontSizeCenter)
 
         const angleDeg = 30
@@ -240,7 +245,7 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
           size: fontSizeCenter,
           font,
           color: rgb(0.7, 0.35, 0.0),
-          opacity: 0.09,
+          opacity: 0.08,
           rotate: degrees(angleDeg),
         })
       }
@@ -292,119 +297,105 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
       const vPage = pdfDoc.addPage([595.28, 841.89]) // A4 Page
       const { width: pWidth, height: pHeight } = vPage.getSize()
 
-      // Top Header Section: Logo INL + Corporate Title (Align Start at margin x: 45)
-      const line1 = 'PT INDUSTRI NABATI LESTARI'
-      const line2 = 'LEMBAR OTENTIKASI & VERIFIKASI DOKUMEN'
-      const line3 = 'Sistem Dokumen Terkontroli SSO · INL Digital Identity'
+      const marginX = 45
+      const contentWidth = pWidth - (marginX * 2)
 
-      let logoW = 175
-      let logoH = 50
-
-      if (logoImage) {
-        const maxLogoH = 54
-        const maxLogoW = 180
-        logoW = maxLogoW
-        logoH = logoImage.height * (logoW / logoImage.width)
-        if (logoH > maxLogoH) {
-          logoH = maxLogoH
-          logoW = logoImage.width * (logoH / logoImage.height)
-        }
-      }
-
-      const logoX = 45
-      const gapBetween = 16
-      const headerTextX = logoX + logoW + gapBetween
+      const logoSize = 48
+      const logoX = marginX
+      const logoY = pHeight - 28 - logoSize
+      const headerTextX = logoX + logoSize + 14
 
       if (logoImage) {
         vPage.drawImage(logoImage, {
           x: logoX,
-          y: pHeight - 22 - logoH,
-          width: logoW,
-          height: logoH,
-        })
-      } else {
-        vPage.drawText(line1, {
-          x: logoX,
-          y: pHeight - 48,
-          size: 14,
-          font,
-          color: rgb(0.85, 0.55, 0.1),
+          y: logoY,
+          width: logoSize,
+          height: logoSize,
         })
       }
 
-      vPage.drawText(line1, {
+      const titleColor = rgb(0.06, 0.09, 0.16)
+      const primaryGold = rgb(0.85, 0.55, 0.1)
+      const slateGray = rgb(0.4, 0.45, 0.5)
+
+      vPage.drawText('PT INDUSTRI NABATI LESTARI', {
         x: headerTextX,
-        y: pHeight - 34,
-        size: 10.5,
+        y: pHeight - 42,
+        size: 13,
         font,
-        color: rgb(0.06, 0.09, 0.16),
+        color: titleColor,
       })
-      vPage.drawText(line2, {
+      vPage.drawText('LEMBAR OTENTIKASI & VERIFIKASI DOKUMEN DIGITAL', {
         x: headerTextX,
-        y: pHeight - 48,
-        size: 11,
+        y: pHeight - 56,
+        size: 10,
         font,
-        color: rgb(0.85, 0.55, 0.1),
+        color: primaryGold,
       })
-      vPage.drawText(line3, {
+      vPage.drawText('Sistem Dokumen Terkontroli SSO · INL Digital Identity Security', {
         x: headerTextX,
-        y: pHeight - 62,
+        y: pHeight - 69,
         size: 8.5,
         font: fontRegular,
-        color: rgb(0.4, 0.45, 0.5),
+        color: slateGray,
       })
 
       // Top Double Divider Line
+      const dividerY = pHeight - 88
       vPage.drawLine({
-        start: { x: 45, y: pHeight - 84 },
-        end: { x: pWidth - 45, y: pHeight - 84 },
+        start: { x: marginX, y: dividerY },
+        end: { x: pWidth - marginX, y: dividerY },
         thickness: 1.5,
-        color: rgb(0.85, 0.55, 0.1),
+        color: primaryGold,
       })
       vPage.drawLine({
-        start: { x: 45, y: pHeight - 87 },
-        end: { x: pWidth - 45, y: pHeight - 87 },
+        start: { x: marginX, y: dividerY - 3 },
+        end: { x: pWidth - marginX, y: dividerY - 3 },
         thickness: 0.5,
         color: rgb(0.7, 0.75, 0.8),
       })
 
       // Status Box (Emerald / Green Verified Banner)
+      const bannerY = dividerY - 58
       vPage.drawRectangle({
-        x: 45,
-        y: pHeight - 150,
-        width: pWidth - 90,
-        height: 50,
+        x: marginX,
+        y: bannerY,
+        width: contentWidth,
+        height: 48,
         color: rgb(0.92, 0.97, 0.94),
         borderColor: rgb(0.6, 0.82, 0.7),
         borderWidth: 1,
       })
 
       vPage.drawText('DOKUMEN TERKONTROLI & SAH TERVERIFIKASI', {
-        x: 65,
-        y: pHeight - 123,
-        size: 12,
+        x: marginX + 16,
+        y: bannerY + 28,
+        size: 11,
         font,
         color: rgb(0.02, 0.45, 0.25),
       })
       vPage.drawText('Berkas ini telah disahkan secara digital melalui Portal Dokumen Resmi PT Industri Nabati Lestari.', {
-        x: 65,
-        y: pHeight - 139,
+        x: marginX + 16,
+        y: bannerY + 12,
         size: 8.5,
         font: fontRegular,
         color: rgb(0.2, 0.35, 0.25),
       })
 
       // Section 1: Informasi Dokumen
-      let currentY = pHeight - 177
+      let currentY = bannerY - 26
 
       vPage.drawText('1. INFORMASI BERKAS DOKUMEN', {
-        x: 45,
+        x: marginX,
         y: currentY,
         size: 10,
         font,
         color: rgb(0.15, 0.2, 0.3),
       })
-      currentY -= 16
+      currentY -= 15
+
+      const labelColWidth = 150
+      const valColWidth = contentWidth - labelColWidth
 
       const infoRows = [
         ['Judul Dokumen', docTitle],
@@ -415,25 +406,25 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
 
       for (const [label, val] of infoRows) {
         vPage.drawRectangle({
-          x: 45,
+          x: marginX,
           y: currentY - 14,
-          width: 155,
+          width: labelColWidth,
           height: 18,
           color: rgb(0.96, 0.97, 0.98),
           borderColor: rgb(0.85, 0.88, 0.9),
           borderWidth: 0.5,
         })
         vPage.drawRectangle({
-          x: 200,
+          x: marginX + labelColWidth,
           y: currentY - 14,
-          width: pWidth - 245,
+          width: valColWidth,
           height: 18,
           color: rgb(1, 1, 1),
           borderColor: rgb(0.85, 0.88, 0.9),
           borderWidth: 0.5,
         })
-        vPage.drawText(label, { x: 52, y: currentY - 9, size: 8, font, color: rgb(0.3, 0.35, 0.4) })
-        vPage.drawText(val.substring(0, 68), { x: 207, y: currentY - 9, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
+        vPage.drawText(label, { x: marginX + 8, y: currentY - 9, size: 8, font, color: rgb(0.3, 0.35, 0.4) })
+        vPage.drawText(val.substring(0, 72), { x: marginX + labelColWidth + 8, y: currentY - 9, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
         currentY -= 18
       }
 
@@ -441,13 +432,13 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
 
       // Section 2: Otorisasi & Keputusan Persetujuan
       vPage.drawText('2. OTORISASI AKSES & SINKRONISASI WAKTU LOG', {
-        x: 45,
+        x: marginX,
         y: currentY,
         size: 10,
         font,
         color: rgb(0.15, 0.2, 0.3),
       })
-      currentY -= 16
+      currentY -= 15
 
       const approvalRows = [
         ['Pemohon / Hak Akses', requesterText],
@@ -459,90 +450,91 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
 
       for (const [label, val] of approvalRows) {
         vPage.drawRectangle({
-          x: 45,
+          x: marginX,
           y: currentY - 14,
-          width: 155,
+          width: labelColWidth,
           height: 18,
           color: rgb(0.96, 0.97, 0.98),
           borderColor: rgb(0.85, 0.88, 0.9),
           borderWidth: 0.5,
         })
         vPage.drawRectangle({
-          x: 200,
+          x: marginX + labelColWidth,
           y: currentY - 14,
-          width: pWidth - 245,
+          width: valColWidth,
           height: 18,
           color: rgb(1, 1, 1),
           borderColor: rgb(0.85, 0.88, 0.9),
           borderWidth: 0.5,
         })
-        vPage.drawText(label, { x: 52, y: currentY - 9, size: 8, font, color: rgb(0.3, 0.35, 0.4) })
-        vPage.drawText(val.substring(0, 68), { x: 207, y: currentY - 9, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
+        vPage.drawText(label, { x: marginX + 8, y: currentY - 9, size: 8, font, color: rgb(0.3, 0.35, 0.4) })
+        vPage.drawText(val.substring(0, 72), { x: marginX + labelColWidth + 8, y: currentY - 9, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
         currentY -= 18
       }
 
       currentY -= 16
 
       // Section 3: QR Code Verification Box
+      const qrBoxHeight = 115
       vPage.drawRectangle({
-        x: 45,
-        y: currentY - 120,
-        width: pWidth - 90,
-        height: 120,
+        x: marginX,
+        y: currentY - qrBoxHeight,
+        width: contentWidth,
+        height: qrBoxHeight,
         color: rgb(0.98, 0.98, 0.99),
         borderColor: rgb(0.8, 0.83, 0.86),
         borderWidth: 0.75,
       })
 
-      const qrBoxSize = 100
+      const qrBoxSize = 95
       if (qrImage) {
         vPage.drawImage(qrImage, {
-          x: 60,
-          y: currentY - 110,
+          x: marginX + 14,
+          y: currentY - qrBoxHeight + 10,
           width: qrBoxSize,
           height: qrBoxSize,
         })
       }
 
-      const textX = 175
+      const textX = marginX + qrBoxSize + 28
       vPage.drawText('PEMINDAIAN KODE VERIFIKASI QR (VERIFICATION QR CODE)', {
         x: textX,
         y: currentY - 22,
-        size: 9,
+        size: 8.5,
         font,
         color: rgb(0.1, 0.15, 0.25),
       })
       vPage.drawText('Pindai QR Code di samping untuk memverifikasi keabsahan lembar otentikasi ini.', {
         x: textX,
-        y: currentY - 38,
-        size: 8,
+        y: currentY - 36,
+        size: 7.5,
         font: fontRegular,
         color: rgb(0.35, 0.4, 0.45),
       })
-      vPage.drawText('Status Berkas:', { x: textX, y: currentY - 56, size: 8, font, color: rgb(0.3, 0.3, 0.3) })
-      vPage.drawText('DOKUMEN RESMI TERKONTROLI (OFFICIAL CONTROLLED COPY)', { x: textX + 65, y: currentY - 56, size: 8, font: fontRegular, color: rgb(0.04, 0.5, 0.25) })
+      vPage.drawText('Status Berkas:', { x: textX, y: currentY - 54, size: 8, font, color: rgb(0.3, 0.3, 0.3) })
+      vPage.drawText('DOKUMEN RESMI TERKONTROLI (OFFICIAL CONTROLLED COPY)', { x: textX + 65, y: currentY - 54, size: 8, font: fontRegular, color: rgb(0.04, 0.5, 0.25) })
 
-      vPage.drawText('ID Verifikasi Sistem:', { x: textX, y: currentY - 72, size: 8, font, color: rgb(0.3, 0.3, 0.3) })
-      vPage.drawText(`INL-SSO-VERIFIED-${Date.now().toString(36).toUpperCase()}`, { x: textX + 90, y: currentY - 72, size: 8, font: fontRegular, color: rgb(0.2, 0.2, 0.2) })
+      vPage.drawText('ID Verifikasi Sistem:', { x: textX, y: currentY - 70, size: 8, font, color: rgb(0.3, 0.3, 0.3) })
+      vPage.drawText(`INL-SSO-VERIFIED-${Date.now().toString(36).toUpperCase()}`, { x: textX + 90, y: currentY - 70, size: 8, font: fontRegular, color: rgb(0.2, 0.2, 0.2) })
 
       // Footer Legal Statement
       const footerY = 45
       vPage.drawLine({
-        start: { x: 45, y: footerY + 25 },
-        end: { x: pWidth - 45, y: footerY + 25 },
+        start: { x: marginX, y: footerY + 25 },
+        end: { x: pWidth - marginX, y: footerY + 25 },
         thickness: 0.75,
         color: rgb(0.8, 0.83, 0.86),
       })
 
       vPage.drawText('LEGALITAS & KETENTUAN HAK CIPTA DOKUMEN PT INDUSTRI NABATI LESTARI', {
-        x: 45,
+        x: marginX,
         y: footerY + 12,
         size: 7.5,
         font,
         color: rgb(0.4, 0.45, 0.5),
       })
       vPage.drawText('Dokumen ini diterbitkan secara elektronik melalui Portal INL SSO. Segala bentuk penyalinan atau pendistribusian tanpa izin resmi merupakan pelanggaran kebijakan perusahaan.', {
-        x: 45,
+        x: marginX,
         y: footerY,
         size: 7,
         font: fontRegular,
