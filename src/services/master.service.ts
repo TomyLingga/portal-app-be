@@ -2,6 +2,7 @@
 import { db } from '../db'
 import { user as userTable, aplikasi, activityLog, employee } from '../db/schema'
 import { eq, and, gte, lte, desc, or, ilike, count } from 'drizzle-orm'
+import { getLiveCountService } from './presence.service'
 
 export async function getMasterStatsService(currentYear: number, currentMonth: number) {
   // 1. Time boundary definitions
@@ -65,10 +66,11 @@ export async function getMasterStatsService(currentYear: number, currentMonth: n
   const todayUserIds = new Set(todayLogs.map(l => l.userId))
   const loginTodayCount = todayUserIds.size
 
-  const onlineUserIds = new Set(
+  const onlineLogsUserIds = new Set(
     todayLogs.filter(l => l.createdAt >= fifteenMinsAgo).map(l => l.userId)
   )
-  const onlineNowCount = onlineUserIds.size
+  const liveHeartbeatsCount = getLiveCountService()
+  const onlineNowCount = liveHeartbeatsCount > 0 ? liveHeartbeatsCount : onlineLogsUserIds.size
 
   const tokens = logs.filter(l => l.appId !== null) as { id: string; appId: string; issuedAt: Date; userId: string }[]
 

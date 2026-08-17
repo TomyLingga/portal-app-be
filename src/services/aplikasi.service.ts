@@ -5,6 +5,7 @@ import { aplikasi, activityLog, appUserAccess, user, employee, unitOrganisasi } 
 import { getPaginationParams, buildMeta } from '../utils/pagination'
 import type { CreateAplikasiInput, UpdateAplikasiInput, ListAplikasiQuery } from '../validators/aplikasi.validator'
 import { deleteFile, buildFileUrl } from '../utils/file'
+import { recordHeartbeatService } from './presence.service'
 
 export async function listAplikasiService(query: ListAplikasiQuery, userId?: string, userRole?: string) {
   const { page, limit, offset } = getPaginationParams(query)
@@ -169,6 +170,14 @@ export async function logAppAccessService(userId: string, appId: string) {
     action: 'access_app',
     details: `Mengakses aplikasi Independent "${app.nama}"`,
   })
+
+  // Update live presence immediately for independent application
+  recordHeartbeatService(userId, {
+    appId,
+    appName: app.nama,
+    currentPath: `/launch?appId=${appId}`,
+    pageTitle: `Membuka Aplikasi: ${app.nama}`,
+  }).catch(() => {})
 }
 
 // ─── App User Access Services ────────────────────────────────────────────────

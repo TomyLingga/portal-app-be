@@ -16,6 +16,7 @@ import {
 } from '../db/schema'
 import { config }       from '../config/env'
 import { buildFileUrl } from '../utils/file'
+import { recordHeartbeatService } from './presence.service'
 
 /**
  * Generate SSO token untuk user yang klik aplikasi SSO di portal.
@@ -125,6 +126,14 @@ export async function generateSSOTokenService(userId: string, appId: string) {
     // Ignore activity log error
   }
 
+  // Update live presence immediately when user clicks an SSO application
+  recordHeartbeatService(userId, {
+    appId: app.id,
+    appName: app.nama,
+    currentPath: '/admin/aplikasi-portal',
+    pageTitle: `Membuka Aplikasi: ${app.nama}`,
+  }).catch(() => {})
+
   return { token: rawToken, expiresAt, redirectUrl: app.url }
 }
 
@@ -228,6 +237,24 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
     if (!currentUnit) break
     organizationHierarchy.unshift(currentUnit)
     currentUnitId = currentUnit.parentId
+  }
+
+  // Update live presence when SSO client verifies token
+  if (found.appId) {
+    db.select({ id: aplikasi.id, nama: aplikasi.nama })
+      .from(aplikasi)
+      .where(eq(aplikasi.id, found.appId))
+      .limit(1)
+      .then(([appInfo]) => {
+        const appName = appInfo?.nama || 'Aplikasi SSO'
+        recordHeartbeatService(found.userId, {
+          appId: found.appId,
+          appName: appName,
+          currentPath: '/admin/aplikasi-portal',
+          pageTitle: `Aktif di ${appName}`,
+        }).catch(() => {})
+      })
+      .catch(() => {})
   }
 
   return {
