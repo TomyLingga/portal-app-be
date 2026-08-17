@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { and, count, desc, eq, gt, isNull, or, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gt, ilike, isNull, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db'
 import {
@@ -236,9 +236,22 @@ export async function listMyDownloadRequestsService(userId: string, query: ListD
   const conditions = [eq(documentDownloadRequests.requestedBy, actor.employeeId!)]
   if (query.status) conditions.push(eq(documentDownloadRequests.status, query.status))
   if (query.documentId) conditions.push(eq(documentDownloadRequests.documentId, query.documentId))
+  if (query.categoryId) conditions.push(eq(documents.categoryId, query.categoryId))
+  if (query.search) {
+    const s = `%${query.search}%`
+    conditions.push(or(
+      ilike(documents.title, s),
+      ilike(documentDownloadRequests.reason, s),
+      ilike(documentCategories.name, s),
+    )!)
+  }
 
   const whereCondition = and(...conditions)
-  const [totalRow] = await db.select({ total: count() }).from(documentDownloadRequests).where(whereCondition)
+  const [totalRow] = await db.select({ total: count() })
+    .from(documentDownloadRequests)
+    .innerJoin(documents, eq(documentDownloadRequests.documentId, documents.id))
+    .innerJoin(documentCategories, eq(documents.categoryId, documentCategories.id))
+    .where(whereCondition)
   const total = Number(totalRow?.total || 0)
 
   const rows = await db.select({
@@ -283,7 +296,20 @@ export async function listPendingDownloadRequestsService(userId: string, query: 
   const { page, limit, offset } = getPaginationParams(query)
   const requester = alias(employee, 'pending_requester_employee')
   const reqStatus = query.status || 'pending'
-  const whereCondition = eq(documentDownloadRequests.status, reqStatus)
+  const conditions = [eq(documentDownloadRequests.status, reqStatus)]
+  if (query.documentId) conditions.push(eq(documentDownloadRequests.documentId, query.documentId))
+  if (query.categoryId) conditions.push(eq(documents.categoryId, query.categoryId))
+  if (query.search) {
+    const s = `%${query.search}%`
+    conditions.push(or(
+      ilike(documents.title, s),
+      ilike(documentDownloadRequests.reason, s),
+      ilike(requester.nama, s),
+      ilike(requester.nrk, s),
+      ilike(documentCategories.name, s),
+    )!)
+  }
+  const whereCondition = and(...conditions)
 
   const rows = await db.selectDistinct({
     id: documentDownloadRequests.id,
@@ -307,6 +333,9 @@ export async function listPendingDownloadRequestsService(userId: string, query: 
 
   const [totalRow] = await db.select({ total: count() })
     .from(documentDownloadRequests)
+    .innerJoin(documents, eq(documentDownloadRequests.documentId, documents.id))
+    .innerJoin(documentCategories, eq(documents.categoryId, documentCategories.id))
+    .innerJoin(requester, eq(documentDownloadRequests.requestedBy, requester.id))
     .where(whereCondition)
 
   return { rows, meta: buildMeta(page, limit, Number(totalRow?.total || 0)) }
@@ -356,6 +385,7 @@ export async function claimDocumentDownloadTokenService(token: string, metadata?
     const [document] = await tx.select({
       id: documents.id,
       title: documents.title,
+      version: documents.version,
       filePath: documents.filePath,
       fileSize: documents.fileSize,
       mimeType: documents.mimeType,
@@ -408,6 +438,9 @@ export async function claimDocumentDownloadTokenService(token: string, metadata?
         categoryName: document?.categoryName || 'Dokumen Resmi',
         categoryCode: document?.categoryCode || 'DOC',
         documentTitle: document?.title || '',
+        version: document?.version || 1,
+        requestId: requestRow.id,
+        documentId: requestRow.documentId,
       },
     }
   })

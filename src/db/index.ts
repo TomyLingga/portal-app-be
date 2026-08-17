@@ -21,7 +21,8 @@ const client = postgres({
   username: config.db.user,
   password: config.db.password,
   database: config.db.name,
-  max:      10,
+  max:      20,
+  max_lifetime: 60 * 30, // 30 minutes connection recycling
   ssl: sslMode === 'require'
     ? { rejectUnauthorized: false }
     : sslMode === 'verify-full'
@@ -29,6 +30,7 @@ const client = postgres({
       : undefined,
   connect_timeout: 10,
   idle_timeout: 30,
+  onnotice: () => {},
   connection: {
     statement_timeout: 20_000,
   },

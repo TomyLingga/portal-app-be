@@ -11,7 +11,7 @@ export const activityLog = pgTable('activity_log', {
   appId: uuid('app_id').references(() => aplikasi.id, { onDelete: 'cascade' }), // Nullable
   action: varchar('action', { length: 100 }).notNull(), // 'login', 'logout', 'access_app', 'update_profile_photo', etc.
   details: text('details').notNull(),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
 export const activityLogRelations = relations(activityLog, ({ one }) => ({

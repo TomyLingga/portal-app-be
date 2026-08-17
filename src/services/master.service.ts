@@ -4,31 +4,63 @@ import { user as userTable, aplikasi, activityLog, employee } from '../db/schema
 import { eq, and, gte, lte, desc, or, ilike, count } from 'drizzle-orm'
 
 export async function getMasterStatsService(currentYear: number, currentMonth: number) {
-  // 1. User Account Counts
-  const allUsers = await db.select().from(userTable)
-  const allApps = await db.select().from(aplikasi).where(eq(aplikasi.isActive, true))
+  // 1. Time boundary definitions
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000)
+  const startDate = new Date(currentYear, currentMonth - 1, 1)
+  const endDate = new Date(currentYear, currentMonth, 1)
+
+  // 2. Fetch all required metrics concurrently in a single round-trip batch
+  const [allUsers, allApps, todayLogs, logs, logsList] = await Promise.all([
+    // User accounts count (only select necessary columns)
+    db.select({ id: userTable.id, isActive: userTable.isActive }).from(userTable),
+
+    // Active applications
+    db.select({ id: aplikasi.id, nama: aplikasi.nama, warna: aplikasi.warna })
+      .from(aplikasi)
+      .where(eq(aplikasi.isActive, true)),
+
+    // Today's login logs
+    db.select({ userId: activityLog.userId, createdAt: activityLog.createdAt })
+      .from(activityLog)
+      .where(and(
+        gte(activityLog.createdAt, startOfToday),
+        lte(activityLog.createdAt, endOfToday)
+      )),
+
+    // Monthly access_app activities
+    db.select({
+      id: activityLog.id,
+      appId: activityLog.appId,
+      issuedAt: activityLog.createdAt,
+      userId: activityLog.userId,
+    })
+      .from(activityLog)
+      .where(and(
+        eq(activityLog.action, 'access_app'),
+        gte(activityLog.createdAt, startDate),
+        lte(activityLog.createdAt, endDate)
+      )),
+
+    // Recent activity logs
+    db.select({
+      email: userTable.email,
+      action: activityLog.action,
+      details: activityLog.details,
+      createdAt: activityLog.createdAt,
+    })
+      .from(activityLog)
+      .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(10),
+  ])
 
   const appsCount = allApps.length
   const usersCount = allUsers.length
   const activeAccountsCount = allUsers.filter(u => u.isActive).length
   const suspendedCount = allUsers.filter(u => !u.isActive).length
-
-  // 2. Real Login & Online User Calculation based on activity_log
-  const now = new Date()
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
-  const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000)
-
-  const todayLogs = await db
-    .select({
-      userId: activityLog.userId,
-      createdAt: activityLog.createdAt,
-    })
-    .from(activityLog)
-    .where(and(
-      gte(activityLog.createdAt, startOfToday),
-      lte(activityLog.createdAt, endOfToday)
-    ))
 
   const todayUserIds = new Set(todayLogs.map(l => l.userId))
   const loginTodayCount = todayUserIds.size
@@ -37,24 +69,6 @@ export async function getMasterStatsService(currentYear: number, currentMonth: n
     todayLogs.filter(l => l.createdAt >= fifteenMinsAgo).map(l => l.userId)
   )
   const onlineNowCount = onlineUserIds.size
-
-  // 3. Daily logs (SSO Token activities)
-  const startDate = new Date(currentYear, currentMonth - 1, 1)
-  const endDate = new Date(currentYear, currentMonth, 1)
-
-  const logs = await db
-    .select({
-      id: activityLog.id,
-      appId: activityLog.appId,
-      issuedAt: activityLog.createdAt,
-      userId: activityLog.userId,
-    })
-    .from(activityLog)
-    .where(and(
-      eq(activityLog.action, 'access_app'),
-      gte(activityLog.createdAt, startDate),
-      lte(activityLog.createdAt, endDate)
-    ))
 
   const tokens = logs.filter(l => l.appId !== null) as { id: string; appId: string; issuedAt: Date; userId: string }[]
 
@@ -93,19 +107,6 @@ export async function getMasterStatsService(currentYear: number, currentMonth: n
       logEntry.total++
     }
   })
-
-  // 3. Recent activity logs (comprehensive audit logs)
-  const logsList = await db
-    .select({
-      email: userTable.email,
-      action: activityLog.action,
-      details: activityLog.details,
-      createdAt: activityLog.createdAt,
-    })
-    .from(activityLog)
-    .innerJoin(userTable, eq(activityLog.userId, userTable.id))
-    .orderBy(desc(activityLog.createdAt))
-    .limit(10)
 
   const finalActivities = logsList.map(act => {
     const diffMs = Date.now() - act.createdAt.getTime()

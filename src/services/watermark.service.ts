@@ -14,8 +14,11 @@ export interface WatermarkMetadata {
   categoryName?: string
   categoryCode?: string
   documentTitle?: string
+  version?: number
   confidentialityLevel?: number
   isDownload?: boolean
+  requestId?: string
+  documentId?: string
 }
 
 function safePdfText(value: string | null | undefined, fallback: string): string {
@@ -102,17 +105,32 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
     const pages = pdfDoc.getPages()
     const approverText = safePdfText(metadata.approverName, 'Sistem Otomatis (Auto-Approved)')
     
-    const approvedDateObj = metadata.approvedAt ? new Date(metadata.approvedAt) : new Date()
-    const approvedAtText = isNaN(approvedDateObj.getTime())
-      ? new Date().toLocaleString('id-ID')
-      : approvedDateObj.toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'medium' })
+    const formatStampDate = (value?: string) => {
+      const dateObj = value ? new Date(value) : new Date()
+      if (isNaN(dateObj.getTime())) return '-'
+      return dateObj.toLocaleString('id-ID', {
+        timeZone: 'Asia/Jakarta',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }).replace(/\./g, ':')
+    }
 
-    const downloadedDateObj = metadata.downloadedAt ? new Date(metadata.downloadedAt) : new Date()
-    const downloadedAtText = isNaN(downloadedDateObj.getTime())
-      ? new Date().toLocaleString('id-ID')
-      : downloadedDateObj.toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'medium' })
+    const approvedAtText = formatStampDate(metadata.approvedAt)
+    const downloadedAtText = formatStampDate(metadata.downloadedAt)
 
     const downloadCountNum = metadata.downloadCount || 1
+
+    const verificationId = [
+      'INL',
+      'SSO',
+      metadata.documentId ? metadata.documentId.replace(/-/g, '').slice(0, 8).toUpperCase() : 'DOC',
+      metadata.requestId ? metadata.requestId.replace(/-/g, '').slice(0, 8).toUpperCase() : new Date().getTime().toString(36).toUpperCase(),
+      downloadCountNum,
+    ].join('-')
 
     const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
@@ -167,6 +185,7 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
     const qrPayload = [
       'VERIFIKASI DOKUMEN DIGITAL - INL SSO',
       'PT INDUSTRI NABATI LESTARI',
+      `ID VERIFIKASI: ${verificationId}`,
       `JUDUL: ${docTitle}`,
       `KATEGORI: ${categoryText}`,
       `PEMOHON: ${requesterText}`,
@@ -175,7 +194,7 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
       `WAKTU UNDUH: ${downloadedAtText}`,
       `FREKUENSI UNDUH: Ke-${downloadCountNum}`,
       `KEPERLUAN: ${safeReason}`,
-      'STATUS: DOKUMEN TERKONTROLI & RESMI'
+      'STATUS: DOKUMEN TERKONTROL & RESMI'
     ].join('\n')
 
     let qrImage: any = null
@@ -297,248 +316,460 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
       const vPage = pdfDoc.addPage([595.28, 841.89]) // A4 Page
       const { width: pWidth, height: pHeight } = vPage.getSize()
 
-      const marginX = 45
-      const contentWidth = pWidth - (marginX * 2)
+      const marginX = 40
+      const contentWidth = pWidth - (marginX * 2) // 515.28 pt
+      const black = rgb(0, 0, 0)
+      const borderBlack = rgb(0, 0, 0)
+      const grayBg = rgb(0.91, 0.93, 0.95)
+      const labelBg = rgb(0.97, 0.98, 0.99)
+      const valueBg = rgb(1, 1, 1)
+      const labelColWidth = 145
+      const valColWidth = contentWidth - labelColWidth
 
-      const logoSize = 48
-      const logoX = marginX
-      const logoY = pHeight - 28 - logoSize
-      const headerTextX = logoX + logoSize + 14
+      // Format date as DD-Mmm-YY (e.g. 17-Agu-26 or 13-Mar-25 matching INL VCF form)
+      const monthNamesId = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+      const dateObj = new Date()
+      const tglBerlakuFormatted = `${dateObj.getDate().toString().padStart(2, '0')}-${monthNamesId[dateObj.getMonth()]}-${dateObj.getFullYear().toString().slice(-2)}`
 
-      if (logoImage) {
-        vPage.drawImage(logoImage, {
-          x: logoX,
-          y: logoY,
-          width: logoSize,
-          height: logoSize,
-        })
-      }
+      // ─── 1. OFFICIAL INL BOXED HEADER TABLE (4 Rows x 72pt total) ───
+      const tableHeight = 72
+      const tableTopY = pHeight - 34
+      const tableBottomY = tableTopY - tableHeight
+      const col1Width = 84 // Logo Column
+      const col2Width = 252 // Center Company & Document Title
+      const col3Width = 82 // Meta Label Column
+      const col4Width = contentWidth - col1Width - col2Width - col3Width // Meta Value Column (97.28 pt)
 
-      const titleColor = rgb(0.06, 0.09, 0.16)
-      const primaryGold = rgb(0.85, 0.55, 0.1)
-      const slateGray = rgb(0.4, 0.45, 0.5)
+      const x1 = marginX + col1Width
+      const x2 = x1 + col2Width
+      const x3 = x2 + col3Width
 
-      vPage.drawText('PT INDUSTRI NABATI LESTARI', {
-        x: headerTextX,
-        y: pHeight - 42,
-        size: 13,
-        font,
-        color: titleColor,
-      })
-      vPage.drawText('LEMBAR OTENTIKASI & VERIFIKASI DOKUMEN DIGITAL', {
-        x: headerTextX,
-        y: pHeight - 56,
-        size: 10,
-        font,
-        color: primaryGold,
-      })
-      vPage.drawText('Sistem Dokumen Terkontroli SSO · INL Digital Identity Security', {
-        x: headerTextX,
-        y: pHeight - 69,
-        size: 8.5,
-        font: fontRegular,
-        color: slateGray,
-      })
-
-      // Top Double Divider Line
-      const dividerY = pHeight - 88
-      vPage.drawLine({
-        start: { x: marginX, y: dividerY },
-        end: { x: pWidth - marginX, y: dividerY },
-        thickness: 1.5,
-        color: primaryGold,
-      })
-      vPage.drawLine({
-        start: { x: marginX, y: dividerY - 3 },
-        end: { x: pWidth - marginX, y: dividerY - 3 },
-        thickness: 0.5,
-        color: rgb(0.7, 0.75, 0.8),
-      })
-
-      // Status Box (Emerald / Green Verified Banner)
-      const bannerY = dividerY - 58
+      // Outer Boundary Box
       vPage.drawRectangle({
         x: marginX,
-        y: bannerY,
+        y: tableBottomY,
         width: contentWidth,
-        height: 48,
-        color: rgb(0.92, 0.97, 0.94),
-        borderColor: rgb(0.6, 0.82, 0.7),
+        height: tableHeight,
+        color: valueBg,
+        borderColor: borderBlack,
         borderWidth: 1,
       })
 
-      vPage.drawText('DOKUMEN TERKONTROLI & SAH TERVERIFIKASI', {
-        x: marginX + 16,
-        y: bannerY + 28,
-        size: 11,
-        font,
-        color: rgb(0.02, 0.45, 0.25),
+      // Vertical Column Dividers
+      vPage.drawLine({
+        start: { x: x1, y: tableBottomY },
+        end: { x: x1, y: tableTopY },
+        thickness: 1,
+        color: borderBlack,
       })
-      vPage.drawText('Berkas ini telah disahkan secara digital melalui Portal Dokumen Resmi PT Industri Nabati Lestari.', {
-        x: marginX + 16,
-        y: bannerY + 12,
-        size: 8.5,
+      vPage.drawLine({
+        start: { x: x2, y: tableBottomY },
+        end: { x: x2, y: tableTopY },
+        thickness: 1,
+        color: borderBlack,
+      })
+      vPage.drawLine({
+        start: { x: x3, y: tableBottomY },
+        end: { x: x3, y: tableTopY },
+        thickness: 1,
+        color: borderBlack,
+      })
+
+      // Center Column Divider between row 3 and row 4 (Document Name Bar)
+      vPage.drawLine({
+        start: { x: x1, y: tableTopY - 54 },
+        end: { x: x2, y: tableTopY - 54 },
+        thickness: 1,
+        color: borderBlack,
+      })
+
+      // Right Meta Column Dividers (3 horizontal lines)
+      vPage.drawLine({
+        start: { x: x2, y: tableTopY - 18 },
+        end: { x: marginX + contentWidth, y: tableTopY - 18 },
+        thickness: 1,
+        color: borderBlack,
+      })
+      vPage.drawLine({
+        start: { x: x2, y: tableTopY - 36 },
+        end: { x: marginX + contentWidth, y: tableTopY - 36 },
+        thickness: 1,
+        color: borderBlack,
+      })
+      vPage.drawLine({
+        start: { x: x2, y: tableTopY - 54 },
+        end: { x: marginX + contentWidth, y: tableTopY - 54 },
+        thickness: 1,
+        color: borderBlack,
+      })
+
+      // ─── Column 1: Large Centered INL Logo ───
+      if (logoImage) {
+        const maxLogoW = 76
+        const maxLogoH = 58
+        const aspect = logoImage.width / logoImage.height
+        let drawLogoW = maxLogoW
+        let drawLogoH = maxLogoW / aspect
+        if (drawLogoH > maxLogoH) {
+          drawLogoH = maxLogoH
+          drawLogoW = maxLogoH * aspect
+        }
+
+        const logoX = marginX + (col1Width - drawLogoW) / 2
+        const logoY = tableBottomY + (tableHeight - drawLogoH) / 2
+
+        vPage.drawImage(logoImage, {
+          x: logoX,
+          y: logoY,
+          width: drawLogoW,
+          height: drawLogoH,
+        })
+      }
+
+      // ─── Column 2: Centered Company Title & Document Name ───
+      const centerMidX = x1 + (col2Width / 2)
+
+      // Line 1: PT. INDUSTRI NABATI LESTARI (Bold + Underlined)
+      const t1 = 'PT. INDUSTRI NABATI LESTARI'
+      const t1Size = 10
+      const t1Width = font.widthOfTextAtSize(t1, t1Size)
+      const t1X = centerMidX - (t1Width / 2)
+      const t1Y = tableTopY - 15
+      vPage.drawText(t1, {
+        x: t1X,
+        y: t1Y,
+        size: t1Size,
+        font,
+        color: black,
+      })
+      vPage.drawLine({
+        start: { x: t1X, y: t1Y - 1.5 },
+        end: { x: t1X + t1Width, y: t1Y - 1.5 },
+        thickness: 0.8,
+        color: black,
+      })
+
+      // Line 2: PABRIK MINYAK GORENG (Bold)
+      const t2 = 'PABRIK MINYAK GORENG'
+      const t2Size = 7.5
+      const t2Width = font.widthOfTextAtSize(t2, t2Size)
+      vPage.drawText(t2, {
+        x: centerMidX - (t2Width / 2),
+        y: tableTopY - 26.5,
+        size: t2Size,
+        font,
+        color: black,
+      })
+
+      // Line 3: Multi-line Address (Fits perfectly inside cell without overflow)
+      const addrLine1 = 'KEK Sei Mangkei, Kav. 2-3, Kec. Bosar Maligas,'
+      const addrLine2 = 'Kab. Simalungun, Sumatera Utara, 21183'
+      const addrSize = 5.8
+      const addrW1 = fontRegular.widthOfTextAtSize(addrLine1, addrSize)
+      const addrW2 = fontRegular.widthOfTextAtSize(addrLine2, addrSize)
+      vPage.drawText(addrLine1, {
+        x: centerMidX - (addrW1 / 2),
+        y: tableTopY - 37,
+        size: addrSize,
         font: fontRegular,
-        color: rgb(0.2, 0.35, 0.25),
+        color: black,
+      })
+      vPage.drawText(addrLine2, {
+        x: centerMidX - (addrW2 / 2),
+        y: tableTopY - 45.5,
+        size: addrSize,
+        font: fontRegular,
+        color: black,
       })
 
-      // Section 1: Informasi Dokumen
-      let currentY = bannerY - 26
-
-      vPage.drawText('1. INFORMASI BERKAS DOKUMEN', {
-        x: marginX,
-        y: currentY,
-        size: 10,
+      // Line 4: Form Title in Row 4 (Clean & Proportionate)
+      const t4 = 'LEMBAR PENGESAHAN DOKUMEN DIGITAL (IDMS)'
+      const t4Size = 7.5
+      const t4Width = font.widthOfTextAtSize(t4, t4Size)
+      vPage.drawText(t4, {
+        x: centerMidX - (t4Width / 2),
+        y: tableBottomY + 5.5,
+        size: t4Size,
         font,
-        color: rgb(0.15, 0.2, 0.3),
+        color: black,
       })
-      currentY -= 15
 
-      const labelColWidth = 150
-      const valColWidth = contentWidth - labelColWidth
+      // ─── Column 3 & 4: Right Metadata Rows ───
+      const col3CenterX = x2 + (col3Width / 2)
+      const col4CenterX = x3 + (col4Width / 2)
 
-      const infoRows = [
-        ['Judul Dokumen', docTitle],
-        ['Kategori Dokumen', `${categoryName} (${categoryCode})`],
-        ['Tingkat Kerahasiaan', metadata.confidentialityLevel ? `Grade ${metadata.confidentialityLevel} (Terkontroli)` : 'Publik / Internal INL'],
-        ['Frekuensi Unduh', `Unduhan Ke-${downloadCountNum} (Terverifikasi System Audit)`],
-      ]
+      const drawMetaRow = (label: string, value: string, rowIdx: number, isValueBold = false) => {
+        const rowMidY = tableTopY - (rowIdx * 18) - 12
+        const valFont = isValueBold ? font : fontRegular
 
-      for (const [label, val] of infoRows) {
+        const lblW = fontRegular.widthOfTextAtSize(label, 7.5)
+        vPage.drawText(label, {
+          x: col3CenterX - (lblW / 2),
+          y: rowMidY,
+          size: 7.5,
+          font: fontRegular,
+          color: black,
+        })
+
+        const valW = valFont.widthOfTextAtSize(value, 7.5)
+        vPage.drawText(value, {
+          x: col4CenterX - (valW / 2),
+          y: rowMidY,
+          size: 7.5,
+          font: valFont,
+          color: black,
+        })
+      }
+
+      drawMetaRow('No. Dokumen', `FM-IDMS-${categoryCode}`, 0, true)
+      drawMetaRow('Tgl berlaku', tglBerlakuFormatted, 1, false)
+      drawMetaRow('No. Revisi', `0${metadata.version || 1}`, 2, false)
+      drawMetaRow('Halaman', '1 dari 1', 3, false)
+
+      // ─── UNIFIED CONTINUOUS FORM TABLE (SEAMLESSLY ATTACHED) ───
+      const drawSectionBanner = (text: string, y: number) => {
         vPage.drawRectangle({
           x: marginX,
-          y: currentY - 14,
-          width: labelColWidth,
+          y: y - 18,
+          width: contentWidth,
           height: 18,
-          color: rgb(0.96, 0.97, 0.98),
-          borderColor: rgb(0.85, 0.88, 0.9),
-          borderWidth: 0.5,
+          color: grayBg,
+          borderColor: borderBlack,
+          borderWidth: 1,
+        })
+        vPage.drawText(text, {
+          x: marginX + 8,
+          y: y - 12.5,
+          size: 8,
+          font,
+          color: black,
+        })
+        return y - 18
+      }
+
+      const drawInfoRow = (label: string, value: string, y: number): number => {
+        const valueLines = wrapPdfText(value, valColWidth - 16, fontRegular, 7.5)
+        const rowHeight = Math.max(20, valueLines.length * 10 + 10)
+
+        vPage.drawRectangle({
+          x: marginX,
+          y: y - rowHeight,
+          width: labelColWidth,
+          height: rowHeight,
+          color: labelBg,
+          borderColor: borderBlack,
+          borderWidth: 0.6,
         })
         vPage.drawRectangle({
           x: marginX + labelColWidth,
-          y: currentY - 14,
+          y: y - rowHeight,
           width: valColWidth,
-          height: 18,
-          color: rgb(1, 1, 1),
-          borderColor: rgb(0.85, 0.88, 0.9),
-          borderWidth: 0.5,
+          height: rowHeight,
+          color: valueBg,
+          borderColor: borderBlack,
+          borderWidth: 0.6,
         })
-        vPage.drawText(label, { x: marginX + 8, y: currentY - 9, size: 8, font, color: rgb(0.3, 0.35, 0.4) })
-        vPage.drawText(val.substring(0, 72), { x: marginX + labelColWidth + 8, y: currentY - 9, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
-        currentY -= 18
+
+        vPage.drawText(label, {
+          x: marginX + 8,
+          y: y - 13.5,
+          size: 7.5,
+          font,
+          color: rgb(0.15, 0.18, 0.22),
+        })
+
+        valueLines.forEach((line, index) => {
+          vPage.drawText(line, {
+            x: marginX + labelColWidth + 8,
+            y: y - 13.5 - (index * 10),
+            size: 7.5,
+            font: fontRegular,
+            color: black,
+          })
+        })
+
+        return y - rowHeight
       }
 
-      currentY -= 12
+      // ─── 1. INFORMASI DOKUMEN (Seamlessly connected to Header Table) ───
+      let currentY = tableBottomY
+      currentY = drawSectionBanner('1. INFORMASI DOKUMEN', currentY)
+      currentY = drawInfoRow('Judul Dokumen', docTitle, currentY)
+      currentY = drawInfoRow('Kategori Dokumen', `${categoryName} (${categoryCode})`, currentY)
+      currentY = drawInfoRow('Versi Dokumen', `Versi ${metadata.version || 1}`, currentY)
 
-      // Section 2: Otorisasi & Keputusan Persetujuan
-      vPage.drawText('2. OTORISASI AKSES & SINKRONISASI WAKTU LOG', {
-        x: marginX,
-        y: currentY,
-        size: 10,
-        font,
-        color: rgb(0.15, 0.2, 0.3),
-      })
-      currentY -= 15
+      // ─── 2. OTORISASI DAN JEJAK AUDIT SISTEM (Seamlessly connected) ───
+      currentY = drawSectionBanner('2. OTORISASI DAN JEJAK AUDIT SISTEM', currentY)
+      currentY = drawInfoRow('Pemohon (Requester)', requesterText, currentY)
+      currentY = drawInfoRow('Pejabat Pengesah (Approver)', approverText, currentY)
+      currentY = drawInfoRow('Waktu Persetujuan', approvedAtText, currentY)
+      currentY = drawInfoRow('Waktu Unduhan', downloadedAtText, currentY)
+      currentY = drawInfoRow('Frekuensi Unduh', `Unduhan ke-${downloadCountNum}`, currentY)
+      currentY = drawInfoRow('Keperluan Pengajuan', safeReason, currentY)
 
-      const approvalRows = [
-        ['Pemohon / Hak Akses', requesterText],
-        ['Pejabat Pengesah', approverText],
-        ['Waktu Persetujuan (Approved At)', approvedAtText],
-        ['Waktu Pengunduhan (Downloaded At)', downloadedAtText],
-        ['Alasan & Keperluan Unduh', safeReason],
-      ]
+      // ─── 3. VERIFIKASI DIGITAL & KEABSAHAN (Seamlessly connected) ───
+      currentY = drawSectionBanner('3. VERIFIKASI KODE QR & KEABSAHAN DIGITAL', currentY)
 
-      for (const [label, val] of approvalRows) {
-        vPage.drawRectangle({
-          x: marginX,
-          y: currentY - 14,
-          width: labelColWidth,
-          height: 18,
-          color: rgb(0.96, 0.97, 0.98),
-          borderColor: rgb(0.85, 0.88, 0.9),
-          borderWidth: 0.5,
-        })
-        vPage.drawRectangle({
-          x: marginX + labelColWidth,
-          y: currentY - 14,
-          width: valColWidth,
-          height: 18,
-          color: rgb(1, 1, 1),
-          borderColor: rgb(0.85, 0.88, 0.9),
-          borderWidth: 0.5,
-        })
-        vPage.drawText(label, { x: marginX + 8, y: currentY - 9, size: 8, font, color: rgb(0.3, 0.35, 0.4) })
-        vPage.drawText(val.substring(0, 72), { x: marginX + labelColWidth + 8, y: currentY - 9, size: 8, font: fontRegular, color: rgb(0.1, 0.1, 0.1) })
-        currentY -= 18
-      }
+      const qrBoxHeight = 96
+      const qrColWidth = 100
 
-      currentY -= 16
-
-      // Section 3: QR Code Verification Box
-      const qrBoxHeight = 115
+      // QR Box Outer Frame
       vPage.drawRectangle({
         x: marginX,
         y: currentY - qrBoxHeight,
         width: contentWidth,
         height: qrBoxHeight,
-        color: rgb(0.98, 0.98, 0.99),
-        borderColor: rgb(0.8, 0.83, 0.86),
-        borderWidth: 0.75,
+        color: valueBg,
+        borderColor: borderBlack,
+        borderWidth: 1,
       })
 
-      const qrBoxSize = 95
+      // Divider between QR image and verification details
+      vPage.drawLine({
+        start: { x: marginX + qrColWidth, y: currentY - qrBoxHeight },
+        end: { x: marginX + qrColWidth, y: currentY },
+        thickness: 0.8,
+        color: borderBlack,
+      })
+
+      const qrBoxSize = 78
       if (qrImage) {
         vPage.drawImage(qrImage, {
-          x: marginX + 14,
-          y: currentY - qrBoxHeight + 10,
+          x: marginX + (qrColWidth - qrBoxSize) / 2,
+          y: currentY - qrBoxHeight + (qrBoxHeight - qrBoxSize) / 2,
           width: qrBoxSize,
           height: qrBoxSize,
         })
       }
 
-      const textX = marginX + qrBoxSize + 28
-      vPage.drawText('PEMINDAIAN KODE VERIFIKASI QR (VERIFICATION QR CODE)', {
-        x: textX,
-        y: currentY - 22,
-        size: 8.5,
+      const qrTextX = marginX + qrColWidth + 14
+      vPage.drawText('PEMINDAIAN TANDA TANGAN ELEKTRONIK & KEABSAHAN', {
+        x: qrTextX,
+        y: currentY - 20,
+        size: 8,
         font,
-        color: rgb(0.1, 0.15, 0.25),
+        color: black,
       })
-      vPage.drawText('Pindai QR Code di samping untuk memverifikasi keabsahan lembar otentikasi ini.', {
-        x: textX,
-        y: currentY - 36,
-        size: 7.5,
+      vPage.drawText('Pindai kode QR menggunakan perangkat kamera untuk memvalidasi keaslian berkas.', {
+        x: qrTextX,
+        y: currentY - 33,
+        size: 6.8,
         font: fontRegular,
         color: rgb(0.35, 0.4, 0.45),
       })
-      vPage.drawText('Status Berkas:', { x: textX, y: currentY - 54, size: 8, font, color: rgb(0.3, 0.3, 0.3) })
-      vPage.drawText('DOKUMEN RESMI TERKONTROLI (OFFICIAL CONTROLLED COPY)', { x: textX + 65, y: currentY - 54, size: 8, font: fontRegular, color: rgb(0.04, 0.5, 0.25) })
-
-      vPage.drawText('ID Verifikasi Sistem:', { x: textX, y: currentY - 70, size: 8, font, color: rgb(0.3, 0.3, 0.3) })
-      vPage.drawText(`INL-SSO-VERIFIED-${Date.now().toString(36).toUpperCase()}`, { x: textX + 90, y: currentY - 70, size: 8, font: fontRegular, color: rgb(0.2, 0.2, 0.2) })
-
-      // Footer Legal Statement
-      const footerY = 45
-      vPage.drawLine({
-        start: { x: marginX, y: footerY + 25 },
-        end: { x: pWidth - marginX, y: footerY + 25 },
-        thickness: 0.75,
-        color: rgb(0.8, 0.83, 0.86),
-      })
-
-      vPage.drawText('LEGALITAS & KETENTUAN HAK CIPTA DOKUMEN PT INDUSTRI NABATI LESTARI', {
-        x: marginX,
-        y: footerY + 12,
+      vPage.drawText('Status Berkas :', {
+        x: qrTextX,
+        y: currentY - 50,
         size: 7.5,
         font,
-        color: rgb(0.4, 0.45, 0.5),
+        color: black,
       })
-      vPage.drawText('Dokumen ini diterbitkan secara elektronik melalui Portal INL SSO. Segala bentuk penyalinan atau pendistribusian tanpa izin resmi merupakan pelanggaran kebijakan perusahaan.', {
-        x: marginX,
-        y: footerY,
-        size: 7,
+      vPage.drawText('OFFICIAL CONTROLLED COPY (TERVERIFIKASI & SAH)', {
+        x: qrTextX + 72,
+        y: currentY - 50,
+        size: 7.5,
+        font,
+        color: rgb(0.04, 0.48, 0.24), // Green
+      })
+      vPage.drawText('ID Verifikasi  :', {
+        x: qrTextX,
+        y: currentY - 66,
+        size: 7.5,
+        font,
+        color: black,
+      })
+      vPage.drawText(verificationId, {
+        x: qrTextX + 72,
+        y: currentY - 66,
+        size: 7.5,
         font: fontRegular,
-        color: rgb(0.5, 0.55, 0.6),
+        color: black,
+      })
+      vPage.drawText('Sistem Validasi:', {
+        x: qrTextX,
+        y: currentY - 82,
+        size: 7.5,
+        font,
+        color: black,
+      })
+      vPage.drawText('INL Integrated Document Management System (IDMS)', {
+        x: qrTextX + 72,
+        y: currentY - 82,
+        size: 7.2,
+        font,
+        color: rgb(0.15, 0.2, 0.28),
+      })
+
+      // ─── OFFICIAL SYSTEM GENERATION STAMP & LEGAL DISCLAIMER (BOTTOM) ───
+      const stampBoxY = 30
+      const stampBoxHeight = 52
+      const stampRed = rgb(0.78, 0.12, 0.12)
+      const stampRedLight = rgb(0.9, 0.45, 0.45)
+      const stampBg = rgb(1, 0.985, 0.985)
+
+      // Outer Red Stamp Frame
+      vPage.drawRectangle({
+        x: marginX,
+        y: stampBoxY,
+        width: contentWidth,
+        height: stampBoxHeight,
+        color: stampBg,
+        borderColor: stampRed,
+        borderWidth: 1.2,
+      })
+
+      // Inner Red Inset Line (Official Stamp Double Border Effect)
+      vPage.drawRectangle({
+        x: marginX + 2.5,
+        y: stampBoxY + 2.5,
+        width: contentWidth - 5,
+        height: stampBoxHeight - 5,
+        borderColor: stampRed,
+        borderWidth: 0.5,
+      })
+
+      // Left Header: Stempel Pengesahan Elektronik
+      vPage.drawText('STEMPEL PENGESAHAN ELEKTRONIK', {
+        x: marginX + 12,
+        y: stampBoxY + 36,
+        size: 7.8,
+        font,
+        color: stampRed,
+      })
+
+      // Right Header: PT Industri Nabati Lestari (Right-Aligned)
+      const ptStampText = 'PT. INDUSTRI NABATI LESTARI'
+      const ptStampWidth = font.widthOfTextAtSize(ptStampText, 7.8)
+      vPage.drawText(ptStampText, {
+        x: marginX + contentWidth - 12 - ptStampWidth,
+        y: stampBoxY + 36,
+        size: 7.8,
+        font,
+        color: stampRed,
+      })
+
+      // Subtle horizontal red line separating header from legal note
+      vPage.drawLine({
+        start: { x: marginX + 10, y: stampBoxY + 30 },
+        end: { x: marginX + contentWidth - 10, y: stampBoxY + 30 },
+        thickness: 0.5,
+        color: stampRedLight,
+      })
+
+      // Stamp Body Text
+      vPage.drawText('Dokumen ini digenerate secara otomatis dan sah oleh INL Document Management System (IDMS).', {
+        x: marginX + 12,
+        y: stampBoxY + 18,
+        size: 6.8,
+        font: fontRegular,
+        color: rgb(0.18, 0.22, 0.26),
+      })
+      vPage.drawText('Salinan digital ini merupakan dokumen terkontrol resmi dan memiliki kekuatan hukum pembuktian digital di lingkungan PT INL.', {
+        x: marginX + 12,
+        y: stampBoxY + 8,
+        size: 6.2,
+        font: fontRegular,
+        color: rgb(0.38, 0.42, 0.46),
       })
     }
 
