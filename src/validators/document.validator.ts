@@ -118,7 +118,8 @@ export const listApproversQuerySchema = z.object({
 export const listDownloadRequestsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(1000).default(50),
-  status: z.enum(['pending', 'approved', 'rejected', 'expired']).optional(),
+  status: z.enum(['pending', 'approved', 'rejected', 'expired', 'used', 'history']).optional(),
+  scope: z.enum(['pending', 'approved', 'history']).optional(),
   documentId: z.string().uuid().optional(),
   categoryId: z.string().uuid().optional(),
   search: z.string().trim().max(200).optional(),

@@ -69,8 +69,8 @@ import {
 import { httpError } from '../utils/httpError'
 import { ok } from '../utils/response'
 import { db } from '../db'
-import { documentCategories, documents, employee } from '../db/schema'
-import { eq } from 'drizzle-orm'
+import { documentAuditLog, documentCategories, documents, employee, user } from '../db/schema'
+import { and, count, eq } from 'drizzle-orm'
 
 const idParamsSchema = z.object({ id: z.string().uuid() })
 const tokenParamsSchema = z.object({ token: z.string().uuid() })
@@ -93,7 +93,7 @@ function auditMetadata(request: FastifyRequest) {
 async function createDocumentPreviewBuffer(
   filePath: string,
   requesterId: string,
-  approvedAt = new Date().toISOString(),
+  previewTimestamp = new Date().toISOString(),
   documentId?: string,
 ) {
   const file = getDocumentFile(filePath)
@@ -111,17 +111,33 @@ async function createDocumentPreviewBuffer(
   let categoryName = 'Dokumen Resmi'
   let categoryCode = 'DOC'
   let documentTitle = ''
+  let viewCount = 1
 
   try {
-    const [emp] = await db
-      .select({ nama: employee.nama, nrk: employee.nrk })
-      .from(employee)
-      .where(eq(employee.id, requesterId))
+    const [userRow] = await db
+      .select({
+        nama: employee.nama,
+        nrk: employee.nrk,
+      })
+      .from(user)
+      .leftJoin(employee, eq(user.employeeId, employee.id))
+      .where(eq(user.id, requesterId))
       .limit(1)
 
-    if (emp) {
-      if (emp.nama) requesterName = emp.nama
-      if (emp.nrk) requesterNrk = emp.nrk
+    if (userRow?.nama) {
+      requesterName = userRow.nama
+      if (userRow.nrk) requesterNrk = userRow.nrk
+    } else {
+      const [emp] = await db
+        .select({ nama: employee.nama, nrk: employee.nrk })
+        .from(employee)
+        .where(eq(employee.id, requesterId))
+        .limit(1)
+
+      if (emp) {
+        if (emp.nama) requesterName = emp.nama
+        if (emp.nrk) requesterNrk = emp.nrk
+      }
     }
 
     if (documentId) {
@@ -141,6 +157,22 @@ async function createDocumentPreviewBuffer(
         if (docRow.categoryCode) categoryCode = docRow.categoryCode
         if (docRow.title) documentTitle = docRow.title
       }
+
+      // Count total 'view' actions recorded in audit log for this document
+      try {
+        const [{ totalViews }] = await db
+          .select({ totalViews: count() })
+          .from(documentAuditLog)
+          .where(
+            and(
+              eq(documentAuditLog.documentId, documentId),
+              eq(documentAuditLog.action, 'view')
+            )
+          )
+        viewCount = Number(totalViews) || 1
+      } catch (countErr) {
+        console.warn('Failed to count view audit logs for document:', countErr)
+      }
     }
   } catch (err) {
     console.warn('Failed to fetch details for watermark preview:', err)
@@ -148,13 +180,17 @@ async function createDocumentPreviewBuffer(
 
   return applyPdfWatermark(cleanPdfBuffer, {
     approverName: 'Sistem SSO',
-    approvedAt,
+    approvedAt: previewTimestamp,
+    viewedAt: previewTimestamp,
+    viewCount,
     requesterName,
     requesterNrk,
     reason: 'Pratinjau Dokumen',
     categoryName,
     categoryCode,
     documentTitle,
+    documentId,
+    isDownload: false,
   })
 }
 
@@ -444,7 +480,7 @@ export default async function documentRoutes(fastify: FastifyInstance) {
     if (!doc.access.canView) {
       throw httpError(403, 'Anda tidak memiliki hak melihat dokumen ini')
     }
-    const previewBuffer = await createDocumentPreviewBuffer(doc.filePath, request.user.sub)
+    const previewBuffer = await createDocumentPreviewBuffer(doc.filePath, request.user.sub, new Date().toISOString(), id)
     return sendDocumentPreview(reply, previewBuffer, doc.title)
   })
 

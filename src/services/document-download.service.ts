@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { and, count, desc, eq, gt, ilike, isNull, or, sql } from 'drizzle-orm'
+import { and, count, desc, eq, gt, ilike, isNotNull, isNull, lte, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { db } from '../db'
 import {
@@ -233,8 +233,65 @@ export async function decideDocumentDownloadService(
 export async function listMyDownloadRequestsService(userId: string, query: ListDownloadRequestsQuery) {
   const actor = await getDocumentActorContext(userId)
   const { page, limit, offset } = getPaginationParams(query)
+  const now = new Date()
   const conditions = [eq(documentDownloadRequests.requestedBy, actor.employeeId!)]
-  if (query.status) conditions.push(eq(documentDownloadRequests.status, query.status))
+
+  if (query.scope === 'approved') {
+    conditions.push(
+      eq(documentDownloadRequests.status, 'approved'),
+      isNull(documentDownloadRequests.downloadedAt),
+      or(isNull(documentDownloadRequests.tokenExpiresAt), gt(documentDownloadRequests.tokenExpiresAt, now))!
+    )
+  } else if (query.scope === 'pending') {
+    conditions.push(eq(documentDownloadRequests.status, 'pending'))
+  } else if (query.scope === 'history') {
+    if (query.status === 'rejected') {
+      conditions.push(eq(documentDownloadRequests.status, 'rejected'))
+    } else if (query.status === 'used') {
+      conditions.push(and(
+        eq(documentDownloadRequests.status, 'approved'),
+        isNotNull(documentDownloadRequests.downloadedAt)
+      )!)
+    } else if (query.status === 'expired') {
+      conditions.push(and(
+        eq(documentDownloadRequests.status, 'approved'),
+        isNull(documentDownloadRequests.downloadedAt),
+        isNotNull(documentDownloadRequests.tokenExpiresAt),
+        lte(documentDownloadRequests.tokenExpiresAt, now)
+      )!)
+    } else {
+      conditions.push(
+        or(
+          eq(documentDownloadRequests.status, 'rejected'),
+          isNotNull(documentDownloadRequests.downloadedAt),
+          and(
+            eq(documentDownloadRequests.status, 'approved'),
+            isNotNull(documentDownloadRequests.tokenExpiresAt),
+            lte(documentDownloadRequests.tokenExpiresAt, now)
+          )
+        )!
+      )
+    }
+  } else {
+    if (query.status) {
+      if (query.status === 'used') {
+        conditions.push(and(
+          eq(documentDownloadRequests.status, 'approved'),
+          isNotNull(documentDownloadRequests.downloadedAt)
+        )!)
+      } else if (query.status === 'expired') {
+        conditions.push(and(
+          eq(documentDownloadRequests.status, 'approved'),
+          isNull(documentDownloadRequests.downloadedAt),
+          isNotNull(documentDownloadRequests.tokenExpiresAt),
+          lte(documentDownloadRequests.tokenExpiresAt, now)
+        )!)
+      } else if (query.status === 'pending' || query.status === 'approved' || query.status === 'rejected') {
+        conditions.push(eq(documentDownloadRequests.status, query.status))
+      }
+    }
+  }
+
   if (query.documentId) conditions.push(eq(documentDownloadRequests.documentId, query.documentId))
   if (query.categoryId) conditions.push(eq(documents.categoryId, query.categoryId))
   if (query.search) {
@@ -275,7 +332,6 @@ export async function listMyDownloadRequestsService(userId: string, query: ListD
     .where(whereCondition)
     .orderBy(desc(documentDownloadRequests.createdAt)).limit(limit).offset(offset)
 
-  const now = new Date()
   const processedRows = rows.map(r => {
     const isConsumedOrExpired = r.status === 'approved' && (Boolean(r.downloadedAt) || (r.tokenExpiresAt && new Date(r.tokenExpiresAt) <= now))
     return {
@@ -295,7 +351,7 @@ export async function listPendingDownloadRequestsService(userId: string, query: 
   }
   const { page, limit, offset } = getPaginationParams(query)
   const requester = alias(employee, 'pending_requester_employee')
-  const reqStatus = query.status || 'pending'
+  const reqStatus = (query.status === 'pending' || query.status === 'approved' || query.status === 'rejected' || query.status === 'expired') ? query.status : 'pending'
   const conditions = [eq(documentDownloadRequests.status, reqStatus)]
   if (query.documentId) conditions.push(eq(documentDownloadRequests.documentId, query.documentId))
   if (query.categoryId) conditions.push(eq(documents.categoryId, query.categoryId))
@@ -344,17 +400,45 @@ export async function listPendingDownloadRequestsService(userId: string, query: 
 export async function getDocumentCapabilitiesService(userId: string) {
   const actor = await getDocumentActorContext(userId, false)
   const isSuperAdmin = actor.role === 'super_admin'
+  const now = new Date()
 
+  let pendingApprovalCount = 0
   if (isSuperAdmin) {
-    const [countRow] = await db.select({ total: count() }).from(documentDownloadRequests).where(eq(documentDownloadRequests.status, 'pending'))
-    return { canManage: true, canApproveDownload: true, canViewAudit: true, pendingApprovalCount: Number(countRow?.total || 0) }
+    const [countRow] = await db.select({ total: count() })
+      .from(documentDownloadRequests)
+      .where(eq(documentDownloadRequests.status, 'pending'))
+    pendingApprovalCount = Number(countRow?.total || 0)
+  }
+
+  let myPendingCount = 0
+  let myApprovedCount = 0
+  if (actor.employeeId) {
+    const [pendingRow] = await db.select({ total: count() })
+      .from(documentDownloadRequests)
+      .where(and(
+        eq(documentDownloadRequests.requestedBy, actor.employeeId),
+        eq(documentDownloadRequests.status, 'pending')
+      ))
+    myPendingCount = Number(pendingRow?.total || 0)
+
+    const [approvedRow] = await db.select({ total: count() })
+      .from(documentDownloadRequests)
+      .where(and(
+        eq(documentDownloadRequests.requestedBy, actor.employeeId),
+        eq(documentDownloadRequests.status, 'approved'),
+        isNull(documentDownloadRequests.downloadedAt),
+        or(isNull(documentDownloadRequests.tokenExpiresAt), gt(documentDownloadRequests.tokenExpiresAt, now))
+      ))
+    myApprovedCount = Number(approvedRow?.total || 0)
   }
 
   return {
-    canManage: false,
-    canApproveDownload: false,
-    canViewAudit: false,
-    pendingApprovalCount: 0,
+    canManage: isSuperAdmin,
+    canApproveDownload: isSuperAdmin,
+    canViewAudit: isSuperAdmin,
+    pendingApprovalCount,
+    myPendingCount,
+    myApprovedCount,
   }
 }
 

@@ -4,13 +4,15 @@ import QRCode from 'qrcode'
 import { degrees, PDFDocument, rgb, StandardFonts } from 'pdf-lib'
 
 export interface WatermarkMetadata {
-  approverName: string
-  approvedAt: string
+  approverName?: string
+  approvedAt?: string
   downloadedAt?: string
   downloadCount?: number
-  requesterName: string
-  requesterNrk: string
-  reason: string
+  viewedAt?: string
+  viewCount?: number
+  requesterName?: string
+  requesterNrk?: string
+  reason?: string
   categoryName?: string
   categoryCode?: string
   documentTitle?: string
@@ -121,16 +123,25 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
 
     const approvedAtText = formatStampDate(metadata.approvedAt)
     const downloadedAtText = formatStampDate(metadata.downloadedAt)
+    const viewedAtText = formatStampDate(metadata.viewedAt || metadata.approvedAt)
 
     const downloadCountNum = metadata.downloadCount || 1
+    const viewCountNum = metadata.viewCount || 1
 
-    const verificationId = [
-      'INL',
-      'SSO',
-      metadata.documentId ? metadata.documentId.replace(/-/g, '').slice(0, 8).toUpperCase() : 'DOC',
-      metadata.requestId ? metadata.requestId.replace(/-/g, '').slice(0, 8).toUpperCase() : new Date().getTime().toString(36).toUpperCase(),
-      downloadCountNum,
-    ].join('-')
+    const verificationId = metadata.isDownload
+      ? [
+          'INL',
+          'SSO',
+          metadata.documentId ? metadata.documentId.replace(/-/g, '').slice(0, 8).toUpperCase() : 'DOC',
+          metadata.requestId ? metadata.requestId.replace(/-/g, '').slice(0, 8).toUpperCase() : new Date().getTime().toString(36).toUpperCase(),
+          downloadCountNum,
+        ].join('-')
+      : [
+          'INL',
+          'VIEW',
+          metadata.documentId ? metadata.documentId.replace(/-/g, '').slice(0, 8).toUpperCase() : 'DOC',
+          viewCountNum,
+        ].join('-')
 
     const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
@@ -150,7 +161,7 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
     const categoryName = safePdfText(metadata.categoryName, 'Dokumen Resmi')
     const categoryCode = safePdfText(metadata.categoryCode, 'DOC')
     const categoryText = `${categoryName} (${categoryCode})`
-    const safeReason = safePdfText(metadata.reason, 'Kebutuhan Operasional')
+    const safeReason = safePdfText(metadata.reason, metadata.isDownload ? 'Kebutuhan Operasional' : 'Pratinjau Dokumen')
     const docTitle = safePdfText(metadata.documentTitle, 'Dokumen Perusahaan')
 
     // Load INL Logo image for center diagonal watermark and top header
@@ -182,20 +193,36 @@ export async function applyPdfWatermark(pdfBuffer: Buffer, metadata: WatermarkMe
     }
 
     // Generate Verification QR Code PNG Buffer
-    const qrPayload = [
-      'VERIFIKASI DOKUMEN DIGITAL - INL SSO',
-      'PT INDUSTRI NABATI LESTARI',
-      `ID VERIFIKASI: ${verificationId}`,
-      `JUDUL: ${docTitle}`,
-      `KATEGORI: ${categoryText}`,
-      `PEMOHON: ${requesterText}`,
-      `PENGESAH: ${approverText}`,
-      `WAKTU APPROVAL: ${approvedAtText}`,
-      `WAKTU UNDUH: ${downloadedAtText}`,
-      `FREKUENSI UNDUH: Ke-${downloadCountNum}`,
-      `KEPERLUAN: ${safeReason}`,
-      'STATUS: DOKUMEN TERKONTROL & RESMI'
-    ].join('\n')
+    let qrPayload: string
+    if (metadata.isDownload) {
+      qrPayload = [
+        'VERIFIKASI DOKUMEN DIGITAL - INL SSO',
+        'PT INDUSTRI NABATI LESTARI',
+        `ID VERIFIKASI: ${verificationId}`,
+        `JUDUL: ${docTitle}`,
+        `KATEGORI: ${categoryText}`,
+        `PEMOHON: ${requesterText}`,
+        `PENGESAH: ${approverText}`,
+        `WAKTU APPROVAL: ${approvedAtText}`,
+        `WAKTU UNDUH: ${downloadedAtText}`,
+        `FREKUENSI UNDUH: Ke-${downloadCountNum}`,
+        `KEPERLUAN: ${safeReason}`,
+        'STATUS: DOKUMEN RESMI TERKONTROL (UNDUHAN)'
+      ].join('\n')
+    } else {
+      qrPayload = [
+        'VERIFIKASI DOKUMEN DIGITAL - INL SSO',
+        'PT INDUSTRI NABATI LESTARI',
+        `ID VERIFIKASI: ${verificationId}`,
+        `JUDUL: ${docTitle}`,
+        `KATEGORI: ${categoryText}`,
+        `PENGAKSES: ${requesterText}`,
+        `WAKTU LIHAT: ${viewedAtText}`,
+        `FREKUENSI LIHAT: Ke-${viewCountNum}`,
+        `KEPERLUAN: ${safeReason}`,
+        'STATUS: DOKUMEN RESMI TERKONTROL (PRATINJAU)'
+      ].join('\n')
+    }
 
     let qrImage: any = null
     try {
