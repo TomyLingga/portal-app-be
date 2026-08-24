@@ -1,0 +1,1 @@
+ALTER TABLE "ref_tipe_unit" ADD COLUMN "level" integer DEFAULT 1 NOT NULL;

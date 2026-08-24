@@ -1,0 +1,217 @@
+// ─── Utils: Global Error Handler ──────────────────────────────────────────────
+import { FastifyRequest, FastifyReply } from 'fastify'
+import { ZodError } from 'zod'
+import { config } from '../config/env'
+
+const validationFieldLabels: Record<string, string> = {
+  title: 'Judul',
+  name: 'Nama',
+  code: 'Kode',
+  description: 'Deskripsi',
+  categoryId: 'Kategori dokumen',
+  documentId: 'Dokumen',
+  documentCategoryId: 'Kategori dokumen',
+  ownerUnitId: 'Unit pemilik',
+  unitOrganisasiId: 'Unit organisasi',
+  confidentialityLevel: 'Level kerahasiaan',
+  defaultConfidentialityLevel: 'Level kerahasiaan default',
+  autoApproveGradeLevel: 'Level grade persetujuan otomatis',
+  minGradeLevel: 'Grade minimum',
+  accessType: 'Jenis akses',
+  includeDescendants: 'Unit turunan',
+  employeeId: 'Karyawan',
+  approvalOrder: 'Urutan persetujuan',
+  file: 'Berkas',
+  fileSize: 'Ukuran berkas',
+  mimeType: 'Format berkas',
+  reason: 'Alasan',
+  action: 'Tindakan',
+  rejectionReason: 'Alasan penolakan',
+  page: 'Halaman',
+  limit: 'Jumlah data',
+  search: 'Pencarian',
+  startDate: 'Tanggal mulai',
+  endDate: 'Tanggal selesai',
+}
+
+function validationFieldLabel(path: PropertyKey[]) {
+  const field = String(path.at(-1) ?? 'data')
+  const knownLabel = validationFieldLabels[field]
+  if (knownLabel) return knownLabel
+
+  const readable = field
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .trim()
+
+  return readable
+    ? readable.charAt(0).toUpperCase() + readable.slice(1).toLowerCase()
+    : 'Data'
+}
+
+function formatValidationMessage(issue: ZodError['issues'][number]) {
+  const label = validationFieldLabel(issue.path)
+  const detail = issue as typeof issue & {
+    origin?: string
+    minimum?: number
+    maximum?: number
+    expected?: string
+    format?: string
+    keys?: string[]
+  }
+
+  if (/received (undefined|null)/i.test(issue.message)) {
+    return `${label} wajib diisi.`
+  }
+
+  switch (issue.code) {
+    case 'too_small':
+      if (detail.origin === 'string') return `${label} minimal ${detail.minimum} karakter.`
+      if (detail.origin === 'array' || detail.origin === 'set') return `${label} minimal berisi ${detail.minimum} item.`
+      return `${label} minimal bernilai ${detail.minimum}.`
+    case 'too_big':
+      if (detail.origin === 'string') return `${label} maksimal ${detail.maximum} karakter.`
+      if (detail.origin === 'array' || detail.origin === 'set') return `${label} maksimal berisi ${detail.maximum} item.`
+      return `${label} maksimal bernilai ${detail.maximum}.`
+    case 'invalid_type': {
+      const expectedType: Record<string, string> = {
+        string: 'teks',
+        number: 'angka',
+        boolean: 'pilihan benar atau salah',
+        array: 'daftar',
+        object: 'objek',
+        date: 'tanggal',
+      }
+      return `${label} harus berupa ${expectedType[detail.expected ?? ''] ?? 'data dengan format yang benar'}.`
+    }
+    case 'invalid_format':
+      if (detail.format === 'email') return `${label} harus berupa alamat email yang valid.`
+      if (detail.format === 'uuid') return `${label} tidak valid.`
+      if (detail.format === 'url') return `${label} harus berupa alamat URL yang valid.`
+      if (detail.format === 'date') return `${label} harus menggunakan format tanggal yang valid.`
+      return `Format ${label.toLowerCase()} tidak valid.`
+    case 'invalid_value':
+      return `${label} berisi pilihan yang tidak valid.`
+    case 'unrecognized_keys':
+      return `Terdapat field yang tidak dikenali: ${(detail.keys ?? []).join(', ')}.`
+    case 'custom':
+      return issue.message
+    default:
+      return /^[A-Za-z ]+: expected|^Invalid |^Too (small|big)/i.test(issue.message)
+        ? `${label} tidak valid.`
+        : issue.message
+  }
+}
+
+export function errorHandler(error: unknown, request: FastifyRequest, reply: FastifyReply) {
+  if (error instanceof ZodError) {
+    return reply.code(422).send({
+      success: false,
+      error:   'Validasi gagal',
+      details: error.issues.map(issue => ({
+        field: issue.path.join('.'),
+        message: formatValidationMessage(issue),
+      })),
+    })
+  }
+
+  const err = error as any
+
+  // Handle ENOENT (file static not found) & 404 errors
+  if (err.code === 'ENOENT' || err.statusCode === 404) {
+    if (request.url.startsWith('/uploads/')) {
+      reply.header('Content-Type', 'image/svg+xml')
+      reply.header('Cache-Control', 'public, max-age=86400')
+      return reply.status(200).send('<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>')
+    }
+    return reply.code(404).send({
+      success: false,
+      error: 'File atau resource tidak ditemukan.',
+    })
+  }
+
+  // Operational HTTP Errors (400-499) thrown intentionally with user messages
+  if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+    return reply.code(err.statusCode).send({
+      success: false,
+      error: err.message,
+    })
+  }
+
+  // Handle foreign key constraint violation (linked to other data)
+  const isForeignKeyError =
+    err.code === '23503' ||
+    err.cause?.code === '23503' ||
+    err.originalError?.code === '23503' ||
+    String(err.message || '').includes('violates foreign key constraint') ||
+    String(err.cause?.message || '').includes('violates foreign key constraint') ||
+    String(err.originalError?.message || '').includes('violates foreign key constraint') ||
+    String(err.message || '').includes('foreign key constraint') ||
+    String(err.cause?.message || '').includes('foreign key constraint') ||
+    String(err.detail || '').includes('referenced from table');
+
+  if (isForeignKeyError) {
+    return reply.code(400).send({
+      success: false,
+      error: 'Data tidak dapat dihapus atau diproses karena terikat dengan data lain.',
+    })
+  }
+
+  // Handle unique constraint violation (duplicate key)
+  const isUniqueError =
+    err.code === '23505' ||
+    err.cause?.code === '23505' ||
+    err.originalError?.code === '23505' ||
+    String(err.message || '').includes('violates unique constraint') ||
+    String(err.cause?.message || '').includes('violates unique constraint') ||
+    String(err.originalError?.message || '').includes('violates unique constraint');
+
+  if (isUniqueError) {
+    const detail = String(err.detail || err.cause?.detail || err.message || '');
+    let customMsg = 'Data yang dimasukkan sudah terdaftar atau duplikat.';
+    const keyMatch = detail.match(/Key \(([^)]+)\)=\(([^)]+)\)/);
+    if (keyMatch) {
+      const rawField = keyMatch[1];
+      const val = keyMatch[2];
+      const field = validationFieldLabels[rawField] || rawField;
+      customMsg = `${field} '${val}' sudah digunakan.`;
+    }
+    return reply.code(400).send({
+      success: false,
+      error: customMsg,
+    })
+  }
+
+  // Handle NOT NULL constraint violation
+  const isNotNullError =
+    err.code === '23502' ||
+    err.cause?.code === '23502' ||
+    err.originalError?.code === '23502' ||
+    String(err.message || '').includes('violates not-null constraint') ||
+    String(err.cause?.message || '').includes('violates not-null constraint');
+
+  if (isNotNullError) {
+    return reply.code(400).send({
+      success: false,
+      error: 'Terdapat data wajib yang belum diisi.',
+    })
+  }
+
+  if (err.message && !err.statusCode) {
+    if (String(err.message).startsWith('Failed query:')) {
+      console.error('[DB Error Detail]:', err.cause || err.message);
+    }
+    // If it's a raw query failure error message, sanitize it so SQL queries are not leaked
+    const cleanMessage = String(err.message).startsWith('Failed query:')
+      ? (config.app.nodeEnv === 'development' ? `DB Error: ${err.cause?.message || err.message}` : 'Gagal memproses permintaan database.')
+      : err.message;
+    return reply.code(400).send({ success: false, error: cleanMessage })
+  }
+
+  request.log.error(err)
+  
+  return reply.code(err.statusCode ?? 500).send({
+    success: false,
+    error: config.app.nodeEnv === 'production' ? 'Internal server error' : err.message,
+  })
+}

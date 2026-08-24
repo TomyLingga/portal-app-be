@@ -1,0 +1,261 @@
+// ─── Service: Master (Master Data & Stats) ──────────────────────────────────────
+import { db } from '../db'
+import { user as userTable, aplikasi, activityLog, employee } from '../db/schema'
+import { eq, and, gte, lte, desc, or, ilike, count } from 'drizzle-orm'
+import { getLiveCountService } from './presence.service'
+
+export async function getMasterStatsService(currentYear: number, currentMonth: number) {
+  // 1. Time boundary definitions
+  const now = new Date()
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+  const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000)
+  const startDate = new Date(currentYear, currentMonth - 1, 1)
+  const endDate = new Date(currentYear, currentMonth, 1)
+
+  // 2. Fetch all required metrics concurrently in a single round-trip batch
+  const [allUsers, allApps, todayLogs, logs, logsList] = await Promise.all([
+    // User accounts count (only select necessary columns)
+    db.select({ id: userTable.id, isActive: userTable.isActive }).from(userTable),
+
+    // Active applications
+    db.select({ id: aplikasi.id, nama: aplikasi.nama, warna: aplikasi.warna })
+      .from(aplikasi)
+      .where(eq(aplikasi.isActive, true)),
+
+    // Today's login logs
+    db.select({ userId: activityLog.userId, createdAt: activityLog.createdAt })
+      .from(activityLog)
+      .where(and(
+        gte(activityLog.createdAt, startOfToday),
+        lte(activityLog.createdAt, endOfToday)
+      )),
+
+    // Monthly access_app activities
+    db.select({
+      id: activityLog.id,
+      appId: activityLog.appId,
+      issuedAt: activityLog.createdAt,
+      userId: activityLog.userId,
+    })
+      .from(activityLog)
+      .where(and(
+        eq(activityLog.action, 'access_app'),
+        gte(activityLog.createdAt, startDate),
+        lte(activityLog.createdAt, endDate)
+      )),
+
+    // Recent activity logs
+    db.select({
+      email: userTable.email,
+      action: activityLog.action,
+      details: activityLog.details,
+      createdAt: activityLog.createdAt,
+    })
+      .from(activityLog)
+      .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(10),
+  ])
+
+  const appsCount = allApps.length
+  const usersCount = allUsers.length
+  const activeAccountsCount = allUsers.filter(u => u.isActive).length
+  const suspendedCount = allUsers.filter(u => !u.isActive).length
+
+  const todayUserIds = new Set(todayLogs.map(l => l.userId))
+  const loginTodayCount = todayUserIds.size
+
+  const onlineLogsUserIds = new Set(
+    todayLogs.filter(l => l.createdAt >= fifteenMinsAgo).map(l => l.userId)
+  )
+  const liveHeartbeatsCount = getLiveCountService()
+  const onlineNowCount = liveHeartbeatsCount > 0 ? liveHeartbeatsCount : onlineLogsUserIds.size
+
+  const tokens = logs.filter(l => l.appId !== null) as { id: string; appId: string; issuedAt: Date; userId: string }[]
+
+  const daysInMonth = new Date(currentYear, currentMonth, 0).getDate()
+  const dailyLogs: any[] = []
+
+  const appsList = allApps.map((app) => ({
+    id: app.id,
+    name: app.nama,
+    color: app.warna
+  }))
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const label = day.toString().padStart(2, '0')
+    const key = `${currentYear}-${currentMonth.toString().padStart(2, '0')}-${label}`
+    const appsRecord: Record<string, number> = {}
+    appsList.forEach(app => {
+      appsRecord[app.id] = 0
+    })
+
+    dailyLogs.push({
+      key,
+      label,
+      day,
+      apps: appsRecord,
+      total: 0
+    })
+  }
+
+  tokens.forEach(tok => {
+    const date = new Date(tok.issuedAt)
+    const day = date.getDate()
+    const logEntry = dailyLogs[day - 1]
+    if (logEntry && logEntry.apps[tok.appId] !== undefined) {
+      logEntry.apps[tok.appId]++
+      logEntry.total++
+    }
+  })
+
+  const finalActivities = logsList.map(act => {
+    const diffMs = Date.now() - act.createdAt.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMins / 60)
+    const diffDays = Math.floor(diffHours / 24)
+
+    let relativeTime = 'Baru saja'
+    if (diffDays > 0) relativeTime = `${diffDays} hari lalu`
+    else if (diffHours > 0) relativeTime = `${diffHours} jam lalu`
+    else if (diffMins > 0) relativeTime = `${diffMins} mnt lalu`
+
+    let type = 'info'
+    let text = act.details
+    if (act.action === 'login') {
+      type = 'login'
+      text = `User "${act.email}" masuk portal`
+    } else if (act.action === 'logout') {
+      type = 'logout'
+      text = `User "${act.email}" keluar portal`
+    } else if (act.action === 'access_app') {
+      type = 'access'
+      text = `User "${act.email}" ${act.details.toLowerCase()}`
+    } else if (act.action === 'update_profile_photo') {
+      type = 'profile'
+      text = `User "${act.email}" mengubah foto profil`
+    }
+
+    return {
+      type,
+      text,
+      time: relativeTime
+    }
+  })
+
+  return {
+    appsCount,
+    usersCount,
+    activeCount: loginTodayCount,
+    activeAccountsCount,
+    loginTodayCount,
+    onlineNowCount,
+    suspendedCount,
+    dailyLogs,
+    appsList,
+    recentActivities: finalActivities
+  }
+}
+
+export async function getPaginatedLogsService(params: {
+  page: number
+  limit: number
+  search?: string
+  userId?: string
+  appId?: string
+  startDate?: string
+  endDate?: string
+}) {
+  const page = Math.max(1, params.page)
+  const limit = Math.max(1, params.limit)
+  const offset = (page - 1) * limit
+
+  const conditions: any[] = []
+
+  if (params.startDate) {
+    conditions.push(gte(activityLog.createdAt, new Date(params.startDate)))
+  }
+  if (params.endDate) {
+    conditions.push(lte(activityLog.createdAt, new Date(params.endDate)))
+  }
+  if (params.userId) {
+    conditions.push(eq(activityLog.userId, params.userId))
+  }
+  if (params.appId) {
+    conditions.push(eq(activityLog.appId, params.appId))
+  }
+
+  if (params.search) {
+    conditions.push(
+      or(
+        ilike(userTable.email, `%${params.search}%`),
+        ilike(employee.nama, `%${params.search}%`),
+        ilike(aplikasi.nama, `%${params.search}%`),
+        ilike(activityLog.details, `%${params.search}%`),
+        ilike(activityLog.action, `%${params.search}%`)
+      )
+    )
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+  let query = db
+    .select({
+      id: activityLog.id,
+      userId: activityLog.userId,
+      email: userTable.email,
+      userNama: employee.nama,
+      appId: activityLog.appId,
+      appName: aplikasi.nama,
+      appColor: aplikasi.warna,
+      action: activityLog.action,
+      details: activityLog.details,
+      createdAt: activityLog.createdAt,
+    })
+    .from(activityLog)
+    .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .leftJoin(aplikasi, eq(activityLog.appId, aplikasi.id))
+
+  const countQuery = db
+    .select({ total: count() })
+    .from(activityLog)
+    .innerJoin(userTable, eq(activityLog.userId, userTable.id))
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .leftJoin(aplikasi, eq(activityLog.appId, aplikasi.id))
+
+  const finalQuery = whereClause ? query.where(whereClause) : query
+  const finalCountQuery = whereClause ? countQuery.where(whereClause) : countQuery
+
+  const data = await finalQuery
+    .orderBy(desc(activityLog.createdAt))
+    .limit(limit)
+    .offset(offset)
+
+  const [{ total }] = await finalCountQuery
+
+  return {
+    data,
+    meta: {
+      page,
+      limit,
+      total: Number(total),
+      totalPages: Math.ceil(Number(total) / limit),
+    }
+  }
+}
+
+export async function getUsersOptionsService() {
+  const users = await db
+    .select({
+      id: userTable.id,
+      email: userTable.email,
+      nama: employee.nama,
+    })
+    .from(userTable)
+    .leftJoin(employee, eq(userTable.employeeId, employee.id))
+    .orderBy(userTable.email)
+
+  return users
+}

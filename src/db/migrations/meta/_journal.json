@@ -1,0 +1,125 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1782278134540,
+      "tag": "0000_pink_kitty_pryde",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782529814049,
+      "tag": "0001_reflective_ares",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782530244749,
+      "tag": "0002_lyrical_smasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782535691077,
+      "tag": "0003_spooky_logan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782538376090,
+      "tag": "0004_married_iron_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782619710313,
+      "tag": "0005_lyrical_speed_demon",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782620892406,
+      "tag": "0006_unique_iron_monger",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782620892500,
+      "tag": "0007_activity_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782620892600,
+      "tag": "0008_add_ref_agama",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782620892700,
+      "tag": "0009_add_login_songs",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782891106852,
+      "tag": "0010_drop_login_songs",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783659600000,
+      "tag": "0011_allow_nullable_employee_nik",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784000000000,
+      "tag": "0012_nullable_employee_core_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784701496750,
+      "tag": "0013_document_management",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1785121200000,
+      "tag": "0015_portal_branding",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1785800000000,
+      "tag": "0016_document_global_viewers",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786255200000,
+      "tag": "0017_activity_log_timestamptz",
+      "breakpoints": true
+    }
+  ]
+}

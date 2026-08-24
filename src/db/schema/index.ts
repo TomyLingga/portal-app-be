@@ -1,0 +1,9 @@
+// ─── Schema Index — re-export semua table & relations ─────────────────────────
+export * from './master'
+export * from './organisasi'
+export * from './employee'
+export * from './auth'
+export * from './activity_log'
+export * from './document'
+export * from './notification'
+export * from './portal-branding'

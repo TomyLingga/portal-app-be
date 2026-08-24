@@ -1,0 +1,1 @@
+ALTER TABLE "user_passkey" ADD COLUMN "name" varchar(150) DEFAULT 'Perangkat Passkey' NOT NULL;

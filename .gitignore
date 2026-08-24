@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+
+# Maintain directory structure but ignore uploaded files in git
+uploads/*
+!uploads/.gitkeep
+
+document-storage/*
+!document-storage/.gitkeep
+
+*.log
+/data/import/
+/data/backups/
