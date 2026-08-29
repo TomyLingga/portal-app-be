@@ -1,5 +1,5 @@
 // ─── Service: Employee ────────────────────────────────────────────────────────
-import { eq, ilike, and, count, or, SQL, gte, lte, isNull, isNotNull } from 'drizzle-orm'
+import { eq, ilike, and, count, or, SQL, gte, lte, isNull, isNotNull, sql } from 'drizzle-orm'
 import { db }            from '../db'
 import { employee, activityLog, user, unitOrganisasi } from '../db/schema'
 import { getPaginationParams, buildMeta } from '../utils/pagination'
@@ -45,11 +45,27 @@ export async function listEmployeesService(query: ListEmployeeQuery) {
 
   const where = conditions.length ? and(...conditions) : undefined
 
-  const [{ total }] = await db
-    .select({ total: count() })
+  // Agregat dihitung di seluruh hasil filter sebelum limit/offset diterapkan.
+  // Dengan begitu kartu statistik tidak ikut terpotong oleh pagination tabel.
+  const [summary] = await db
+    .select({
+      total: count(),
+      active: sql<number>`count(*) filter (where ${employee.isActive} = true)`,
+      inactive: sql<number>`count(*) filter (where ${employee.isActive} = false)`,
+      male: sql<number>`count(*) filter (where ${employee.jenisKelamin} = 'L')`,
+      female: sql<number>`count(*) filter (where ${employee.jenisKelamin} = 'P')`,
+    })
     .from(employee)
     .leftJoin(user, eq(employee.id, user.employeeId))
     .where(where)
+
+  const stats = {
+    total: Number(summary?.total ?? 0),
+    active: Number(summary?.active ?? 0),
+    inactive: Number(summary?.inactive ?? 0),
+    male: Number(summary?.male ?? 0),
+    female: Number(summary?.female ?? 0),
+  }
 
   const rows = await db
     .select({
@@ -91,7 +107,10 @@ export async function listEmployeesService(query: ListEmployeeQuery) {
 
   return {
     rows: rows.map(withFileUrl),
-    meta: buildMeta(page, limit, Number(total)),
+    meta: {
+      ...buildMeta(page, limit, stats.total),
+      stats,
+    },
   }
 }
 
