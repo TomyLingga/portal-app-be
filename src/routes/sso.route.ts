@@ -4,7 +4,7 @@ import { z }                 from 'zod'
 import { generateSSOTokenService, verifySSOTokenService } from '../services/sso.service'
 import { ok }                from '../utils/response'
 import { db }                from '../db'
-import { employee, refGrade, unitOrganisasi, refPenempatanArea, user as userTable } from '../db/schema'
+import { employee, refGrade, unitOrganisasi, refPenempatanArea, refStatusKaryawan, user as userTable } from '../db/schema'
 import { eq, gt, and, isNotNull } from 'drizzle-orm'
 import { config }             from '../config/env'
 
@@ -78,12 +78,21 @@ export default async function ssoRoutes(fastify: FastifyInstance) {
         penempatanLat: refPenempatanArea.latitude,
         penempatanLng: refPenempatanArea.longitude,
         atasanId: employee.atasanId,
+        nrk: employee.nrk,
+        email: userTable.email,
+        unitId: unitOrganisasi.id,
+        unitKode: unitOrganisasi.kode,
+        unitParentId: unitOrganisasi.parentId,
+        nomorHp: employee.nomorHp,
+        statusKaryawanKode: refStatusKaryawan.kode,
+        statusKaryawanLabel: refStatusKaryawan.label,
       })
       .from(employee)
       .leftJoin(userTable, eq(userTable.employeeId, employee.id))
       .leftJoin(refGrade, eq(employee.gradeId, refGrade.id))
       .leftJoin(unitOrganisasi, eq(employee.unitOrganisasiId, unitOrganisasi.id))
       .leftJoin(refPenempatanArea, eq(employee.penempatanAreaId, refPenempatanArea.id))
+      .leftJoin(refStatusKaryawan, eq(employee.statusKaryawanId, refStatusKaryawan.id))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(refGrade.level, employee.nama)
       .limit(500)

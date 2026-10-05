@@ -13,6 +13,7 @@ import {
   refGrade,
   unitOrganisasi,
   refPenempatanArea,
+  refStatusKaryawan,
 } from '../db/schema'
 import { config }       from '../config/env'
 import { buildFileUrl } from '../utils/file'
@@ -170,7 +171,9 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
   // Token sudah dicabut saat klaim di atas (atomik).
 
   // Ambil profil kerja employee. Data personal sensitif seperti NIK, alamat,
-  // nomor HP, tanggal lahir, agama, dan status pernikahan tidak dikirim lewat SSO.
+  // tanggal lahir, agama, dan status pernikahan tidak dikirim lewat SSO.
+  // Nomor HP & status karyawan dikirim karena dicetak di formulir aplikasi klien
+  // (mis. Form Request PM-App).
   const atasan = alias(employee, 'sso_employee_atasan')
   const [userData] = await db
     .select({
@@ -187,9 +190,14 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
       employeeFoto: employee.fotoProfil,
       employeeIsActive: employee.isActive,
       employeeAtasanId: employee.atasanId,
+      employeeNomorHp: employee.nomorHp,
+      statusKaryawanId: refStatusKaryawan.id,
+      statusKaryawanKode: refStatusKaryawan.kode,
+      statusKaryawanLabel: refStatusKaryawan.label,
       atasanNrk: atasan.nrk,
       atasanNama: atasan.nama,
       atasanJabatan: atasan.jabatan,
+      atasanNomorHp: atasan.nomorHp,
       gradeId: refGrade.id,
       gradeKode: refGrade.kode,
       gradeLabel: refGrade.label,
@@ -211,6 +219,7 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
     .leftJoin(refGrade, eq(employee.gradeId, refGrade.id))
     .leftJoin(unitOrganisasi, eq(employee.unitOrganisasiId, unitOrganisasi.id))
     .leftJoin(refPenempatanArea, eq(employee.penempatanAreaId, refPenempatanArea.id))
+    .leftJoin(refStatusKaryawan, eq(employee.statusKaryawanId, refStatusKaryawan.id))
     .where(eq(userTable.id, found.userId))
     .limit(1)
 
@@ -273,11 +282,18 @@ export async function verifySSOTokenService(rawToken: string, appId: string) {
       tanggalMasuk: userData.employeeTanggalMasuk,
       fotoProfil: buildFileUrl(userData.employeeFoto),
       isActive: userData.employeeIsActive,
+      nomorHp: userData.employeeNomorHp,
+      statusKaryawan: userData.statusKaryawanId ? {
+        id: userData.statusKaryawanId,
+        kode: userData.statusKaryawanKode,
+        label: userData.statusKaryawanLabel,
+      } : null,
       atasan: userData.employeeAtasanId ? {
         id: userData.employeeAtasanId,
         nrk: userData.atasanNrk,
         nama: userData.atasanNama,
         jabatan: userData.atasanJabatan,
+        nomorHp: userData.atasanNomorHp,
       } : null,
       grade: userData.gradeId ? {
         id: userData.gradeId,
