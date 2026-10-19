@@ -1,6 +1,10 @@
 import 'dotenv/config'
 import { z } from 'zod'
 
+// Nilai kosong ("PHOTON_URL=") diperlakukan sama dengan tidak diisi → pakai default.
+const urlOrDefault = (fallback: string) =>
+  z.preprocess(value => (value === '' ? undefined : value), z.string().url().default(fallback))
+
 // Trigger restart for env reload
 // ─── Schema validasi env ──────────────────────────────────────────────────────
 const envSchema = z.object({
@@ -32,6 +36,13 @@ const envSchema = z.object({
   // (reachability + sertifikat SSL). Kosongkan untuk auto-derive dari
   // WEBAUTHN_RP_ID / FRONTEND_URL, biar akurat mengikuti deployment nyata.
   MONITOR_DOMAIN: z.string().optional(),
+
+  // Peta & lokasi (services/geo.service.ts). Default memakai layanan publik
+  // berbasis OpenStreetMap yang gratis; ganti URL-nya bila sudah self-host.
+  PHOTON_URL:     urlOrDefault('https://photon.komoot.io'),
+  NOMINATIM_URL:  urlOrDefault('https://nominatim.openstreetmap.org'),
+  // Nominatim & Photon mewajibkan User-Agent yang mengidentifikasi aplikasi.
+  GEO_USER_AGENT: z.string().default('InTes-Portal/1.0 (PT Industri Nabati Lestari)'),
 
   // Upload
   UPLOAD_DIR: z.string().default('uploads'),
@@ -120,6 +131,11 @@ export const config = {
   },
   monitor: {
     domain: deriveMonitorDomain(),
+  },
+  geo: {
+    photonUrl:    env.PHOTON_URL.replace(/\/+$/, ''),
+    nominatimUrl: env.NOMINATIM_URL.replace(/\/+$/, ''),
+    userAgent:    env.GEO_USER_AGENT,
   },
   upload: {
     dir: env.UPLOAD_DIR,

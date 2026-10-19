@@ -24,6 +24,7 @@ import documentRoutes   from './routes/document.route'
 import notificationRoutes from './routes/notification.route'
 import portalBrandingRoutes from './routes/portal-branding.route'
 import presenceRoutes from './routes/presence.route'
+import geoRoutes from './routes/geo.route'
 
 // ─── Pastikan folder uploads ada ─────────────────────────────────────────────
 const uploadDir = path.resolve(config.upload.dir)
@@ -153,6 +154,7 @@ export async function buildApp() {
   await fastify.register(notificationRoutes, { prefix: '/api/notifications' })
   await fastify.register(portalBrandingRoutes, { prefix: '/api/settings' })
   await fastify.register(presenceRoutes,   { prefix: '/api/presence' })
+  await fastify.register(geoRoutes,        { prefix: '/api/geo' })
 
   // ─── Health check ────────────────────────────────────────────────────────────
   fastify.get('/health', async () => ({

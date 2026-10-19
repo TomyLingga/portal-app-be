@@ -120,6 +120,13 @@
       "when": 1786255200000,
       "tag": "0017_activity_log_timestamptz",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792375600000,
+      "tag": "0018_geo_cache",
+      "breakpoints": true
     }
   ]
 }
